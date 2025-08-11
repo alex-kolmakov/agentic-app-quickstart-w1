@@ -22,7 +22,7 @@ Use cases:
 
 from agents import Agent, Runner, SQLiteSession, set_tracing_disabled
 import asyncio
-from agentic_app_quickstart.examples.helpers import get_model
+from agentic_app_quickstart.examples.google_helpers import get_model
 
 # Disable detailed logging for cleaner output
 set_tracing_disabled(True)

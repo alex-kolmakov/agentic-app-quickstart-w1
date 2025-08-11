@@ -31,7 +31,7 @@ from agents import (
     input_guardrail,
     set_tracing_disabled
 )
-from agentic_app_quickstart.examples.helpers import get_model
+from agentic_app_quickstart.examples.google_helpers import get_model
 from pydantic import BaseModel
 
 # Disable detailed logging for cleaner output

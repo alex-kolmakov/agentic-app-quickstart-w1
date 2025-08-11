@@ -18,7 +18,7 @@ Use cases:
 
 import asyncio
 from agents import Agent, Runner, set_tracing_disabled, function_tool
-from agentic_app_quickstart.examples.helpers import get_model
+from agentic_app_quickstart.examples.google_helpers import get_model
 import datetime
 
 # Disable detailed logging for cleaner output
