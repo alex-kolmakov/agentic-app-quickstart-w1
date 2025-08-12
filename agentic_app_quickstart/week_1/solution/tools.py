@@ -32,6 +32,111 @@ current_filename = None
 
 
 @function_tool
+def investigate_directory(directory_path: str = None) -> str:
+    """
+    Investigate files in a directory to help select the appropriate data file.
+    
+    Args:
+        directory_path (str): Path to directory to investigate (defaults to ./data)
+        
+    Returns:
+        str: List of files with descriptions and recommendations
+    """
+    try:
+        # Default to the data directory if no path provided
+        if directory_path is None:
+            data_dir = Path(__file__).parent / "data"
+            directory_path = str(data_dir)
+        
+        # Convert to Path object for easier handling
+        dir_path = Path(directory_path)
+        
+        if not dir_path.exists():
+            return f"❌ Directory '{directory_path}' does not exist."
+        
+        if not dir_path.is_dir():
+            return f"❌ '{directory_path}' is not a directory."
+        
+        # Get all files in the directory
+        files = [f for f in dir_path.iterdir() if f.is_file()]
+        
+        if not files:
+            return f"📂 Directory '{directory_path}' is empty."
+        
+        # Analyze each file
+        file_info = []
+        csv_files = []
+        
+        for file_path in sorted(files):
+            file_name = file_path.name
+            file_size = file_path.stat().st_size
+            file_ext = file_path.suffix.lower()
+            
+            # Basic file info
+            size_mb = file_size / (1024 * 1024)
+            info = f"📄 {file_name} ({size_mb:.2f} MB)"
+            
+            # Add content hints based on filename patterns
+            name_lower = file_name.lower()
+            if 'weather' in name_lower:
+                info += " - 🌤️ Likely contains weather/climate data"
+            elif 'sales' in name_lower or 'revenue' in name_lower:
+                info += " - 💰 Likely contains sales/financial data"  
+            elif 'employee' in name_lower or 'staff' in name_lower or 'personnel' in name_lower:
+                info += " - 👥 Likely contains employee/HR data"
+            elif 'customer' in name_lower or 'client' in name_lower:
+                info += " - 🤝 Likely contains customer data"
+            elif 'product' in name_lower or 'inventory' in name_lower:
+                info += " - 📦 Likely contains product/inventory data"
+            elif 'transaction' in name_lower or 'order' in name_lower:
+                info += " - 🛒 Likely contains transaction/order data"
+            
+            # Check if it's a CSV file
+            if file_ext == '.csv':
+                csv_files.append(file_path)
+                info += " ✅ CSV format - ready to load"
+                
+                # Try to peek at CSV structure without loading fully
+                try:
+                    sample_df = pd.read_csv(file_path, nrows=0)  # Just get column names
+                    cols = list(sample_df.columns)
+                    info += f" (Columns: {len(cols)})"
+                    if len(cols) <= 8:  # Show column names if not too many
+                        info += f" [{', '.join(cols)}]"
+                except Exception:
+                    info += " (Unable to read CSV structure)"
+            elif file_ext in ['.xlsx', '.xls']:
+                info += " 📊 Excel format - may need conversion"
+            elif file_ext in ['.json']:
+                info += " 🔗 JSON format - may need conversion"
+            elif file_ext in ['.txt', '.log']:
+                info += " 📝 Text format - may need parsing"
+            else:
+                info += f" ❓ {file_ext.upper()} format"
+            
+            file_info.append(info)
+        
+        # Build response
+        result = f"🔍 Found {len(files)} files in '{directory_path}':\n\n"
+        result += "\n".join(file_info)
+        
+        # Add recommendations
+        if csv_files:
+            result += f"\n\n💡 Recommendations:"
+            result += f"\n• {len(csv_files)} CSV files are ready to load with load_csv_file()"
+            
+            # Provide specific suggestions based on common requests
+            result += f"\n• For weather data: Look for files with 'weather' in the name"
+            result += f"\n• For sales data: Look for files with 'sales' or 'revenue' in the name"
+            result += f"\n• For employee data: Look for files with 'employee', 'staff', or 'personnel' in the name"
+        
+        return result
+        
+    except Exception as e:
+        return f"❌ Error investigating directory: {str(e)}"
+
+
+@function_tool
 def load_csv_file(file_path: str) -> str:
     """
     Load a CSV file into memory for analysis.
@@ -451,22 +556,6 @@ def filter_data(column_name: str, condition: str, value: str) -> str:
         return f"❌ Error filtering data: {str(e)}"
 
 
-# List of all available tools for easy reference
-AVAILABLE_TOOLS = [
-    load_csv_file,
-    get_column_names,
-    get_dataset_info,
-    calculate_column_average,
-    calculate_column_stats,
-    count_rows_with_value,
-    get_unique_values,
-    find_max_value,
-    find_min_value,
-    group_by_column_and_aggregate,
-    filter_data
-]
-
-
 # =============================================================================
 # 📈 DATA VISUALIZATION TOOLS
 # =============================================================================
@@ -477,70 +566,6 @@ def setup_plot_style():
     sns.set_palette("husl")
     plt.rcParams['figure.figsize'] = (10, 6)
     plt.rcParams['figure.dpi'] = 100
-
-
-@function_tool
-def create_histogram(column_name: str, bins: int = 20, save_path: str = None) -> str:
-    """
-    Create a histogram for a numeric column.
-    
-    Args:
-        column_name (str): Name of the column to visualize
-        bins (int): Number of bins for the histogram
-        save_path (str): Optional path to save the chart image
-        
-    Returns:
-        str: Success message with chart description or error message
-    """
-    if current_dataset is None:
-        return "❌ No dataset loaded. Please load a CSV file first."
-    
-    if column_name not in current_dataset.columns:
-        available_cols = ', '.join(current_dataset.columns)
-        return f"❌ Column '{column_name}' not found. Available columns: {available_cols}"
-    
-    try:
-        # Convert to numeric and handle non-numeric data
-        column_data = pd.to_numeric(current_dataset[column_name], errors='coerce')
-        clean_data = column_data.dropna()
-        
-        if len(clean_data) == 0:
-            return f"❌ Column '{column_name}' contains no numeric data for histogram."
-        
-        # Set up the plot
-        setup_plot_style()
-        plt.figure(figsize=(10, 6))
-        
-        # Create histogram
-        plt.hist(clean_data, bins=bins, alpha=0.7, color='skyblue', edgecolor='black')
-        plt.title(f'📊 Distribution of {column_name}', fontsize=16, fontweight='bold')
-        plt.xlabel(column_name, fontsize=12)
-        plt.ylabel('Frequency', fontsize=12)
-        plt.grid(True, alpha=0.3)
-        
-        # Add statistics text
-        mean_val = clean_data.mean()
-        median_val = clean_data.median()
-        std_val = clean_data.std()
-        
-        stats_text = f'Mean: {mean_val:.2f}\nMedian: {median_val:.2f}\nStd Dev: {std_val:.2f}\nCount: {len(clean_data)}'
-        plt.text(0.02, 0.98, stats_text, transform=plt.gca().transAxes, 
-                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-        
-        # Save or show
-        if save_path:
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            plt.close()
-            return f"📊 Histogram saved to '{save_path}'. Shows distribution of {len(clean_data)} values in '{column_name}' with mean {mean_val:.2f}"
-        else:
-            # Save to default location
-            save_path = f"histogram_{column_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            plt.close()
-            return f"📊 Histogram created and saved as '{save_path}'. Shows distribution of {len(clean_data)} values in '{column_name}' with mean {mean_val:.2f}"
-        
-    except Exception as e:
-        return f"❌ Error creating histogram: {str(e)}"
 
 
 @function_tool
@@ -789,191 +814,10 @@ def create_box_plot(column_name: str, group_column: str = None, save_path: str =
         return f"❌ Error creating box plot: {str(e)}"
 
 
-@function_tool
-def create_correlation_heatmap(save_path: str = None) -> str:
-    """
-    Create a correlation heatmap for all numeric columns.
-    
-    Args:
-        save_path (str): Optional path to save the chart image
-        
-    Returns:
-        str: Success message with chart description or error message
-    """
-    if current_dataset is None:
-        return "❌ No dataset loaded. Please load a CSV file first."
-    
-    try:
-        # Get only numeric columns
-        numeric_cols = current_dataset.select_dtypes(include=[np.number]).columns
-        
-        if len(numeric_cols) < 2:
-            return f"❌ Need at least 2 numeric columns for correlation heatmap. Found: {', '.join(numeric_cols)}"
-        
-        # Calculate correlation matrix
-        corr_matrix = current_dataset[numeric_cols].corr()
-        
-        setup_plot_style()
-        plt.figure(figsize=(10, 8))
-        
-        # Create heatmap
-        mask = np.triu(np.ones_like(corr_matrix, dtype=bool))  # Mask upper triangle
-        sns.heatmap(corr_matrix, mask=mask, annot=True, cmap='coolwarm', center=0,
-                    square=True, linewidths=0.5, cbar_kws={"shrink": .8}, fmt='.2f')
-        
-        plt.title('📊 Correlation Matrix Heatmap', fontsize=16, fontweight='bold')
-        plt.tight_layout()
-        
-        # Save
-        if save_path:
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            plt.close()
-            return f"📊 Correlation heatmap saved to '{save_path}'. Shows correlations between {len(numeric_cols)} numeric columns"
-        else:
-            save_path = f"correlation_heatmap_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            plt.close()
-            return f"📊 Correlation heatmap created and saved as '{save_path}'. Shows correlations between {len(numeric_cols)} numeric columns"
-        
-    except Exception as e:
-        return f"❌ Error creating correlation heatmap: {str(e)}"
-
-
-@function_tool
-def create_data_summary_dashboard(save_path: str = None) -> str:
-    """
-    Create a comprehensive dashboard with multiple visualizations.
-    
-    Args:
-        save_path (str): Optional path to save the dashboard image
-        
-    Returns:
-        str: Success message with dashboard description or error message
-    """
-    if current_dataset is None:
-        return "❌ No dataset loaded. Please load a CSV file first."
-    
-    try:
-        setup_plot_style()
-        
-        # Get numeric and categorical columns
-        numeric_cols = current_dataset.select_dtypes(include=[np.number]).columns.tolist()
-        categorical_cols = current_dataset.select_dtypes(include=['object', 'category']).columns.tolist()
-        
-        # Create subplot layout
-        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-        fig.suptitle(f'📊 Data Summary Dashboard - {current_filename}', fontsize=20, fontweight='bold')
-        
-        # 1. Dataset overview (top-left)
-        ax1 = axes[0, 0]
-        ax1.axis('off')
-        
-        rows, cols = current_dataset.shape
-        missing_data = current_dataset.isnull().sum().sum()
-        
-        overview_text = f"""
-        📋 Dataset Overview
-        
-        📊 Shape: {rows} rows × {cols} columns
-        🔢 Numeric columns: {len(numeric_cols)}
-        📝 Categorical columns: {len(categorical_cols)}
-        ❌ Missing values: {missing_data}
-        
-        📈 Numeric Columns:
-        {chr(10).join(f"  • {col}" for col in numeric_cols[:8])}
-        {'  ...' if len(numeric_cols) > 8 else ''}
-        
-        📝 Categorical Columns:
-        {chr(10).join(f"  • {col}" for col in categorical_cols[:8])}
-        {'  ...' if len(categorical_cols) > 8 else ''}
-        """
-        
-        ax1.text(0.1, 0.9, overview_text, transform=ax1.transAxes, 
-                fontsize=11, verticalalignment='top', fontfamily='monospace')
-        
-        # 2. Numeric column distributions (top-right)
-        if len(numeric_cols) > 0:
-            ax2 = axes[0, 1]
-            col_to_plot = numeric_cols[0]  # Plot first numeric column
-            numeric_data = pd.to_numeric(current_dataset[col_to_plot], errors='coerce').dropna()
-            
-            ax2.hist(numeric_data, bins=20, alpha=0.7, color='skyblue', edgecolor='black')
-            ax2.set_title(f'Distribution: {col_to_plot}', fontweight='bold')
-            ax2.set_xlabel(col_to_plot)
-            ax2.set_ylabel('Frequency')
-            ax2.grid(True, alpha=0.3)
-        else:
-            axes[0, 1].axis('off')
-            axes[0, 1].text(0.5, 0.5, 'No numeric columns\nfor histogram', 
-                           ha='center', va='center', transform=axes[0, 1].transAxes)
-        
-        # 3. Categorical distribution (bottom-left)
-        if len(categorical_cols) > 0:
-            ax3 = axes[1, 0]
-            col_to_plot = categorical_cols[0]  # Plot first categorical column
-            value_counts = current_dataset[col_to_plot].value_counts().head(10)
-            
-            bars = ax3.bar(range(len(value_counts)), value_counts.values, 
-                          color='lightcoral', alpha=0.8)
-            ax3.set_title(f'Top Categories: {col_to_plot}', fontweight='bold')
-            ax3.set_xlabel(col_to_plot)
-            ax3.set_ylabel('Count')
-            ax3.set_xticks(range(len(value_counts)))
-            ax3.set_xticklabels(value_counts.index, rotation=45, ha='right')
-            ax3.grid(True, alpha=0.3, axis='y')
-            
-            # Add value labels
-            for bar, count in zip(bars, value_counts.values):
-                ax3.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1, 
-                        str(count), ha='center', va='bottom')
-        else:
-            axes[1, 0].axis('off')
-            axes[1, 0].text(0.5, 0.5, 'No categorical columns\nfor bar chart', 
-                           ha='center', va='center', transform=axes[1, 0].transAxes)
-        
-        # 4. Missing data visualization (bottom-right)
-        ax4 = axes[1, 1]
-        missing_by_col = current_dataset.isnull().sum()
-        missing_by_col = missing_by_col[missing_by_col > 0].sort_values(ascending=True)
-        
-        if len(missing_by_col) > 0:
-            bars = ax4.barh(range(len(missing_by_col)), missing_by_col.values, 
-                           color='orange', alpha=0.8)
-            ax4.set_title('Missing Data by Column', fontweight='bold')
-            ax4.set_xlabel('Number of Missing Values')
-            ax4.set_yticks(range(len(missing_by_col)))
-            ax4.set_yticklabels(missing_by_col.index)
-            ax4.grid(True, alpha=0.3, axis='x')
-            
-            # Add value labels
-            for i, (bar, count) in enumerate(zip(bars, missing_by_col.values)):
-                ax4.text(bar.get_width() + 0.1, bar.get_y() + bar.get_height()/2, 
-                        str(count), ha='left', va='center')
-        else:
-            ax4.axis('off')
-            ax4.text(0.5, 0.5, '✅ No missing data!', 
-                    ha='center', va='center', transform=ax4.transAxes, 
-                    fontsize=14, fontweight='bold', color='green')
-        
-        plt.tight_layout()
-        
-        # Save
-        if save_path:
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            plt.close()
-            return f"📊 Data summary dashboard saved to '{save_path}'. Comprehensive overview of {current_filename}"
-        else:
-            save_path = f"dashboard_{current_filename.replace('.csv', '')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-            plt.savefig(save_path, dpi=300, bbox_inches='tight')
-            plt.close()
-            return f"📊 Data summary dashboard created and saved as '{save_path}'. Comprehensive overview of {current_filename}"
-        
-    except Exception as e:
-        return f"❌ Error creating dashboard: {str(e)}"
-
 
 # Update the tools list to include visualization tools
 AVAILABLE_TOOLS = [
+    investigate_directory,
     load_csv_file,
     get_column_names,
     get_dataset_info,
@@ -985,10 +829,7 @@ AVAILABLE_TOOLS = [
     find_min_value,
     group_by_column_and_aggregate,
     filter_data,
-    create_histogram,
     create_bar_chart,
     create_scatter_plot,
-    create_box_plot,
-    create_correlation_heatmap,
-    create_data_summary_dashboard
+    create_box_plot
 ]

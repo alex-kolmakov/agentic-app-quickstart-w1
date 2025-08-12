@@ -39,6 +39,7 @@ data_loader_agent = Agent(
 
 Your responsibilities:
 📁 File Operations:
+- Investigating directories to find appropriate data files
 - Loading CSV files from various paths
 - Validating file formats and structure
 - Handling file errors and providing clear feedback
@@ -50,8 +51,15 @@ Your responsibilities:
 - Showing sample data for user understanding
 - Identifying potential data quality issues
 
+🎯 Smart File Selection:
+- When users ask for specific types of data (e.g., "weather data", "sales data"), 
+  first use investigate_directory() to find relevant files
+- Analyze filenames and content hints to recommend the best file to load
+- Provide clear explanations for file selection decisions
+
 When working with users:
 - Always verify the file path and existence before loading
+- If unsure which file to load, investigate the directory first
 - Provide clear success/error messages
 - Give helpful context about the loaded dataset
 - Hand off to Analytics Agent for calculations and analysis
@@ -62,7 +70,7 @@ You focus on the "input" side - getting data ready for analysis.
 Once data is loaded and validated, transfer to appropriate specialists.""",
     model=get_model(),
     tools=[tool for tool in AVAILABLE_TOOLS if tool.name in [
-        'load_csv_file', 'get_column_names', 'get_dataset_info', 'get_unique_values'
+        'investigate_directory', 'load_csv_file', 'get_column_names', 'get_dataset_info', 'get_unique_values'
     ]]
 )
 
@@ -225,16 +233,12 @@ async def run_multi_agent_conversation():
     print("• 💬 Communication: Makes results user-friendly")
     print()
     print("🎨 Visualization Capabilities:")
-    print("• 📊 Histograms - Show data distributions")
     print("• 📈 Bar Charts - Compare categories")
     print("• 🔍 Scatter Plots - Explore relationships")
     print("• 📦 Box Plots - Detect outliers")
-    print("• 🌡️ Heatmaps - Visualize correlations")
-    print("• 📋 Dashboards - Comprehensive overviews")
     print()
     print("💡 Example commands:")
     print('   "Load employee_data.csv and create a dashboard"')
-    print('   "Show me a histogram of salaries"')
     print('   "Create a scatter plot of salary vs performance"')
     print('   "Make a bar chart showing average salary by department"')
     print()
