@@ -30,51 +30,26 @@ Run this file to start the interactive visualization system!
 import asyncio
 import sys
 from pathlib import Path
+import os
+import gradio as gr
 
 # Add the parent directory to the path so we can import from the package
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from agentic_app_quickstart.week_1.solution.custom_agents import (
-    run_multi_agent_conversation,
-    run_demo
-)
-
-
-def print_welcome():
-    """Print the welcome message and system overview."""
-    print("🎪📈" + "=" * 58 + "🎪📈")
-    print("    MULTI-AGENT CSV DATA ANALYSIS & VISUALIZATION SYSTEM")
-    print("🎪📈" + "=" * 58 + "🎪📈")
-    print()
-    print("🚀 Welcome to your intelligent data analysis & visualization assistant!")
-    print()
-    print("💡 EXAMPLE QUESTIONS:")
-    print('   Data Loading:')
-    print('   "Load the employee_data.csv file"')
-    print('   "What are the column names?"')
-    print()
-    print('   Statistical Analysis:')
-    print('   "What\'s the average salary?"')
-    print('   "How many employees are in Engineering?"')
-    print('   "Who has the highest performance score?"')
-    print()
-    print('   Visualization Requests:')
-    print('   "Create a dashboard for the employee data"')
-    print('   "Show me a histogram of salaries"')
-    print('   "Make a scatter plot of salary vs performance"')
-    print('   "Create a bar chart showing average salary by department"')
-    print('   "Show a box plot of performance scores by department"')
-    print('   "Generate a correlation heatmap"')
-    print()
-    print("🎪📈" + "=" * 58 + "🎪📈")
+from agentic_app_quickstart.week_1.solution.custom_agents import run_multi_agent_conversation, create_gradio_interface
 
 
 async def main():
     """Main function to run the multi-agent data analysis & visualization system."""
-    print_welcome()
 
-    while True:
-        await run_multi_agent_conversation()
+    print("\n🌐 Starting Gradio Web Interface...")
+    interface = create_gradio_interface()
+    interface.launch(
+        share=False,
+        server_name="127.0.0.1",
+        server_port=7860,
+        show_error=True
+    )
 
 
 if __name__ == "__main__":

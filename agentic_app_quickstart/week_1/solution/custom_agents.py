@@ -22,6 +22,9 @@ Agent Specialists:
 import asyncio
 from agents import Agent, Runner, SQLiteSession, set_tracing_disabled
 from agentic_app_quickstart.examples.google_helpers import get_model
+from datetime import datetime
+import gradio as gr
+import os
 from tools import AVAILABLE_TOOLS
 
 # Disable detailed logging for cleaner output
@@ -268,7 +271,7 @@ async def run_multi_agent_conversation():
                 input=user_input,
                 session=session
             )
-            
+            breakpoint()
             # Display agent response  
             print(f"\n🤖 Agent: {result.final_output}")
             
@@ -326,6 +329,307 @@ async def run_demo():
         print("\n✨ Demo complete! Check your directory for generated visualizations.")
     else:
         print("Invalid choice. Please run the demo again.")
+
+
+
+# =============================================================================
+# HANDOFF TRACKING UTILITIES
+# =============================================================================
+
+def extract_handoff_map(result):
+    """
+    Extract and analyze agent handoffs from result.new_items
+    
+    Args:
+        result: RunResult object from agents framework
+        
+    Returns:
+        dict: Handoff analysis with timeline and agent interactions
+    """
+    handoff_map = {
+        "agents_involved": [],
+        "handoff_sequence": [],
+        "agent_contributions": {},
+        "timeline": [],
+        "total_handoffs": 0
+    }
+    
+    if not hasattr(result, 'new_items') or not result.new_items:
+        return handoff_map
+    
+    for i, item in enumerate(result.new_items):
+        if hasattr(item, 'agent') and item.agent:
+            agent_name = item.agent.name
+            
+            # Track unique agents
+            if agent_name not in handoff_map["agents_involved"]:
+                handoff_map["agents_involved"].append(agent_name)
+            
+            # Track sequence of agent activations
+            handoff_map["handoff_sequence"].append(agent_name)
+            
+            # Count contributions per agent
+            if agent_name not in handoff_map["agent_contributions"]:
+                handoff_map["agent_contributions"][agent_name] = 0
+            handoff_map["agent_contributions"][agent_name] += 1
+            
+            # Create timeline entry
+            timeline_entry = {
+                "step": i + 1,
+                "agent": agent_name,
+                "timestamp": datetime.now().isoformat(),
+                "item_type": type(item).__name__
+            }
+            handoff_map["timeline"].append(timeline_entry)
+    
+    # Calculate handoffs (transitions between different agents)
+    handoffs = 0
+    for i in range(1, len(handoff_map["handoff_sequence"])):
+        if handoff_map["handoff_sequence"][i] != handoff_map["handoff_sequence"][i-1]:
+            handoffs += 1
+    
+    handoff_map["total_handoffs"] = handoffs
+    
+    return handoff_map
+
+def format_handoff_summary(handoff_map):
+    """
+    Format the handoff map into a human-readable summary
+    
+    Args:
+        handoff_map (dict): Result from extract_handoff_map
+        
+    Returns:
+        str: Formatted summary of agent interactions
+    """
+    if not handoff_map["agents_involved"]:
+        return "🤖 No agent interactions detected."
+    
+    summary = []
+    summary.append("🔄 **AGENT HANDOFF ANALYSIS**")
+    summary.append("=" * 40)
+    
+    # Agent involvement
+    summary.append(f"👥 **Agents Involved:** {len(handoff_map['agents_involved'])}")
+    for agent in handoff_map["agents_involved"]:
+        emoji = {
+            "DataLoaderAgent": "📁",
+            "AnalyticsAgent": "📊", 
+            "VisualizationAgent": "📈",
+            "CommunicationAgent": "💬"
+        }.get(agent, "🤖")
+        contributions = handoff_map["agent_contributions"].get(agent, 0)
+        summary.append(f"  {emoji} {agent}: {contributions} contribution(s)")
+    
+    # Handoff sequence
+    summary.append(f"\n🔄 **Total Handoffs:** {handoff_map['total_handoffs']}")
+    
+    if len(handoff_map["handoff_sequence"]) > 1:
+        summary.append("📋 **Agent Sequence:**")
+        sequence_str = " → ".join([
+            {
+                "DataLoaderAgent": "📁 DataLoader",
+                "AnalyticsAgent": "📊 Analytics", 
+                "VisualizationAgent": "📈 Visualization",
+                "CommunicationAgent": "💬 Communication"
+            }.get(agent, f"🤖 {agent}") 
+            for agent in handoff_map["handoff_sequence"]
+        ])
+        summary.append(f"  {sequence_str}")
+    
+    # Timeline
+    if handoff_map["timeline"]:
+        summary.append("\n⏱️ **Execution Timeline:**")
+        for entry in handoff_map["timeline"]:
+            emoji = {
+                "DataLoaderAgent": "📁",
+                "AnalyticsAgent": "📊", 
+                "VisualizationAgent": "📈",
+                "CommunicationAgent": "💬"
+            }.get(entry["agent"], "🤖")
+            summary.append(f"  Step {entry['step']}: {emoji} {entry['agent']}")
+    
+    return "\n".join(summary)
+
+# =============================================================================
+# ENHANCED CONVERSATION FUNCTION WITH TRACKING
+# =============================================================================
+
+async def run_enhanced_conversation(user_input, session_id="gradio_session"):
+    """
+    Run enhanced conversation with handoff tracking
+    
+    Args:
+        user_input (str): User's question or command
+        session_id (str): Session identifier for memory
+        
+    Returns:
+        tuple: (agent_response, handoff_summary, files_created)
+    """
+    try:
+        # Create session for memory
+        session = SQLiteSession(session_id=session_id)
+        
+        # Start with data loader agent as the entry point
+        result = await Runner.run(
+            starting_agent=data_loader_agent,
+            input=user_input,
+            session=session
+        )
+        
+        # Extract handoff information
+        handoff_map = extract_handoff_map(result)
+        handoff_summary = format_handoff_summary(handoff_map)
+        
+        # Check for generated files (look for common image extensions)
+        import os
+        files_created = []
+        solution_dir = "/Users/helloworld/Projects/agentic-app-quickstart-w1/agentic_app_quickstart/week_1/solution"
+        for file in os.listdir(solution_dir):
+            if file.endswith(('.png', '.jpg', '.jpeg', '.svg')) and file not in ['employee_dashboard.png']:
+                files_created.append(os.path.join(solution_dir, file))
+        
+        # Sort by creation time (newest first)
+        files_created.sort(key=os.path.getctime, reverse=True)
+        
+        return result.final_output, handoff_summary, files_created
+        
+    except Exception as e:
+        error_msg = f"❌ An error occurred: {str(e)}"
+        return error_msg, "🔄 No handoff analysis available due to error.", []
+
+# =============================================================================
+# GRADIO INTERFACE
+# =============================================================================
+
+def create_gradio_interface():
+    """
+    Create and configure the Gradio web interface
+    """
+    
+    # State management for session
+    session_state = {"session_id": f"gradio_{datetime.now().strftime('%Y%m%d_%H%M%S')}"}
+    
+    async def process_query(user_input, history):
+        """Process user query and return response with handoff analysis"""
+        if not user_input.strip():
+            return history, ""
+        
+        # Add user message to history
+        history = history or []
+        history.append([user_input, "Processing..."])
+        
+        # Get response from agents
+        agent_response, handoff_summary, files_created = await run_enhanced_conversation(
+            user_input, 
+            session_state["session_id"]
+        )
+        
+        # Format complete response
+        complete_response = f"{agent_response}\n\n{handoff_summary}"
+        
+        # Add files information if any were created
+        if files_created:
+            chart_info = "\n\n� **Visualizations Generated:**\n"
+            for file_path in files_created:
+                file_name = os.path.basename(file_path)
+                chart_info += f"  🖼️ {file_name}\n"
+            complete_response += chart_info + "\n*(Visualizations are displayed in the gallery panel)*"
+        
+        # Update history with actual response
+        history[-1][1] = complete_response
+        
+        return history, ""
+    
+    def reset_session():
+        """Reset the conversation session"""
+        session_state["session_id"] = f"gradio_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        return [], "🔄 Session reset! New conversation started.", None
+    
+    # Create the interface
+    with gr.Blocks(title="🎪📈 Multi-Agent CSV Analysis System") as interface:
+        
+        gr.Markdown("""
+        # 🎪📈 Multi-Agent CSV Data Analysis & Visualization System
+        
+        Welcome to your intelligent data analysis assistant! This system uses **4 specialized agents** working together:
+        - 📁 **DataLoader**: File operations and data preparation  
+        - 📊 **Analytics**: Statistical calculations and analysis
+        - 📈 **Visualization**: Chart creation and visual insights
+        - 💬 **Communication**: User-friendly response formatting
+        """)
+        
+        with gr.Row():
+            # Chat column
+            with gr.Column(scale=3):
+                chatbot = gr.Chatbot(
+                    height=500,
+                    label="💬 Conversation with Multi-Agent System",
+                    show_label=True
+                )
+                
+                msg = gr.Textbox(
+                    placeholder="Ask about your data... (e.g., 'Load employee_data.csv and analyze it')",
+                    label="Your Question",
+                    lines=2
+                )
+                
+                with gr.Row():
+                    submit_btn = gr.Button("🚀 Analyze", variant="primary")
+                    clear_btn = gr.Button("🔄 Reset Session", variant="secondary")
+            
+            # Visualization column with gallery
+            with gr.Column(scale=2):
+                gr.Markdown("### 📊 Data Visualizations")
+                image_gallery = gr.Gallery(
+                    label="Generated Charts & Plots",
+                    show_label=True,
+                    columns=1,
+                    height=500,
+                    object_fit="contain"
+                )
+                gr.Markdown("""
+                *Ask the system to create visualizations like:*
+                - "Create a bar chart of department vs salary"
+                - "Show me a scatter plot of performance vs experience"
+                - "Make a histogram of employee ages"
+                """)
+                
+        
+        # Event handlers
+        def handle_submit(user_input, history):
+            history, _ = asyncio.run(process_query(user_input, history))
+            
+            # Get any generated visualizations
+            solution_dir = "/Users/helloworld/Projects/agentic-app-quickstart-w1/agentic_app_quickstart/week_1/solution"
+            image_files = []
+            for file in os.listdir(solution_dir):
+                if file.endswith(('.png', '.jpg', '.jpeg', '.svg')) and file not in ['employee_dashboard.png']:
+                    image_files.append(os.path.join(solution_dir, file))
+            
+            # Sort by creation time (newest first)
+            image_files.sort(key=os.path.getctime, reverse=True)
+            
+            return history, "", image_files if image_files else None
+        
+        submit_btn.click(
+            handle_submit,
+            inputs=[msg, chatbot],
+            outputs=[chatbot, msg, image_gallery]
+        )
+        
+        msg.submit(
+            handle_submit,
+            inputs=[msg, chatbot], 
+            outputs=[chatbot, msg, image_gallery]
+        )
+        
+        clear_btn.click(
+            reset_session,
+            outputs=[chatbot, msg, image_gallery]
+        )
+    
+    return interface
 
 
 if __name__ == "__main__":
