@@ -36,7 +36,7 @@ def investigate_directory(directory_path: str = None) -> str:
     Investigate files in a directory to help select the appropriate data file.
     
     Args:
-        directory_path (str): Path to directory to investigate (defaults to ./data)
+        directory_path (str): Path to directory to investigate (defaults to the data directory)
         
     Returns:
         str: List of files with descriptions and recommendations
@@ -48,13 +48,17 @@ def investigate_directory(directory_path: str = None) -> str:
             directory_path = str(data_dir)
         
         # Convert to Path object for easier handling
+        # Handle relative paths properly by making them absolute if needed
         dir_path = Path(directory_path)
+        if not dir_path.is_absolute():
+            # If it's a relative path, resolve it relative to the script's directory
+            dir_path = Path(__file__).parent / directory_path
         
         if not dir_path.exists():
-            return f"❌ Directory '{directory_path}' does not exist."
+            return f"❌ Directory '{dir_path}' does not exist. Please provide an alternative directory path where your data files are stored, or let me know if you'd like help creating or locating a directory for your CSV files."
         
         if not dir_path.is_dir():
-            return f"❌ '{directory_path}' is not a directory."
+            return f"❌ '{dir_path}' is not a directory. Please provide a valid directory path."
         
         # Get all files in the directory
         files = [f for f in dir_path.iterdir() if f.is_file()]
@@ -150,12 +154,33 @@ def load_csv_file(file_path: str) -> str:
     
     try:
         # Convert to absolute path if relative
-        if not os.path.isabs(file_path):
+        original_path = file_path
+        path_obj = Path(file_path)
+        
+        if not path_obj.is_absolute():
             # Look in the data directory first
             data_dir = Path(__file__).parent / "data"
-            potential_path = data_dir / file_path
-            if potential_path.exists():
-                file_path = str(potential_path)
+            
+            # Try different path combinations
+            potential_paths = [
+                data_dir / file_path,  # data/filename
+                data_dir / path_obj.name,  # just the filename in data directory
+                Path(__file__).parent / file_path,  # relative to script directory
+            ]
+            
+            file_found = False
+            for potential_path in potential_paths:
+                if potential_path.exists():
+                    file_path = str(potential_path)
+                    file_found = True
+                    break
+            
+            if not file_found:
+                available_files = []
+                if data_dir.exists():
+                    available_files = [f.name for f in data_dir.iterdir() if f.is_file() and f.suffix.lower() == '.csv']
+                
+                return f"❌ Error: File '{original_path}' not found. Available CSV files in data directory: {', '.join(available_files) if available_files else 'None'}"
         
         # Load the CSV file
         current_dataset = pd.read_csv(file_path)
@@ -167,7 +192,7 @@ def load_csv_file(file_path: str) -> str:
         return f"✅ Successfully loaded '{current_filename}' with {rows} rows and {cols} columns.\nColumns: {', '.join(column_names)}"
         
     except FileNotFoundError:
-        return f"❌ Error: File '{file_path}' not found. Please check the file path."
+        return f"❌ Error: File '{original_path}' not found. Please check the file path."
     except Exception as e:
         return f"❌ Error loading file: {str(e)}"
 
