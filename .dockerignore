@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
+# Project files not needed in container
+uv.lock
+
+# Documentation (excluding README.md as it's needed for the build)
+*.md
+!README.md
+
+# Charts output (will be mounted as volume)
+charts/
+
+# Logs
+*.log
+
+# Requirements file (we use pyproject.toml instead)
+requirements.txt

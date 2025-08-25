@@ -649,7 +649,10 @@ def create_bar_chart(column_name: str, value_column: str = None, save_path: str 
             plt.close()
             return f"📊 Bar chart saved to '{save_path}'. Shows {chart_desc}"
         else:
-            save_path = f"bar_chart_{column_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+            # Use the charts directory that's mounted as a volume in Docker
+            charts_dir = "/app/charts"
+            os.makedirs(charts_dir, exist_ok=True)
+            save_path = os.path.join(charts_dir, f"bar_chart_{column_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             plt.close()
             return f"📊 Bar chart created and saved as '{save_path}'. Shows {chart_desc}"
@@ -729,7 +732,10 @@ def create_scatter_plot(x_column: str, y_column: str, color_column: str = None, 
             plt.close()
             return f"📈 Scatter plot saved to '{save_path}'. Shows relationship between {x_column} and {y_column} (correlation: {correlation:.3f})"
         else:
-            save_path = f"scatter_{x_column}_vs_{y_column}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+            # Use the charts directory that's mounted as a volume in Docker
+            charts_dir = "/app/charts"
+            os.makedirs(charts_dir, exist_ok=True)
+            save_path = os.path.join(charts_dir, f"scatter_{x_column}_vs_{y_column}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             plt.close()
             return f"📈 Scatter plot created and saved as '{save_path}'. Shows relationship between {x_column} and {y_column} (correlation: {correlation:.3f})"
@@ -804,7 +810,10 @@ def create_box_plot(column_name: str, group_column: str = None, save_path: str =
             plt.close()
             return f"📊 Box plot saved to '{save_path}'. Shows {chart_desc}"
         else:
-            save_path = f"box_plot_{column_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+            # Use the charts directory that's mounted as a volume in Docker
+            charts_dir = "/app/charts"
+            os.makedirs(charts_dir, exist_ok=True)
+            save_path = os.path.join(charts_dir, f"box_plot_{column_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png")
             plt.savefig(save_path, dpi=300, bbox_inches='tight')
             plt.close()
             return f"📊 Box plot created and saved as '{save_path}'. Shows {chart_desc}"

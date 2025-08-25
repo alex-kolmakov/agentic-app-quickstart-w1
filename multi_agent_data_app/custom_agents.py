@@ -43,13 +43,27 @@ OpenAIInstrumentor().uninstrument()
 load_dotenv()
 
 # # Enable Phoenix tracing for monitoring agent interactions
-tracer_provider = register(
-    project_name="agentic-test",
-    endpoint="https://app.phoenix.arize.com/s/feanaur2193/v1/traces",
-    batch=True,
-    auto_instrument=True
-)
-OpenAIInstrumentor().instrument(tracer_provider=tracer_provider)
+# Use environment variables for Phoenix configuration
+phoenix_endpoint = os.getenv("PHOENIX_ENDPOINT", "http://localhost:6006")
+phoenix_project_name = os.getenv("PHOENIX_PROJECT_NAME", "agentic-app-quickstart")
+
+print(f"🔍 Initializing Phoenix tracing...")
+print(f"   📡 Endpoint: {phoenix_endpoint}")
+print(f"   📁 Project: {phoenix_project_name}")
+
+try:
+    tracer_provider = register(
+        project_name=phoenix_project_name,
+        endpoint=f"{phoenix_endpoint}/v1/traces",
+        batch=True,
+        auto_instrument=True
+    )
+    OpenAIInstrumentor().instrument(tracer_provider=tracer_provider)
+    print("   ✅ Phoenix tracing initialized successfully")
+except Exception as e:
+    print(f"   ⚠️ Phoenix tracing initialization failed: {e}")
+    print("   📝 Continuing without tracing...")
+    # Continue without tracing if Phoenix is not available
 
 # =============================================================================
 # MULTI-AGENT SYSTEM WITH VISUALIZATION 🤖🤖🤖📈
@@ -403,13 +417,21 @@ async def run_enhanced_conversation(user_input, session_id="gradio_session", inc
         
         # Check for generated files (look for common image extensions)
         files_created = []
-        solution_dir = "/Users/helloworld/Projects/agentic-app-quickstart-w1/multi_agent_data_app"
-        for file in os.listdir(solution_dir):
-            if file.endswith(('.png', '.jpg', '.jpeg', '.svg')):
-                files_created.append(os.path.join(solution_dir, file))
+        # Use the charts directory that's mounted as a volume in Docker
+        charts_dir = "/app/charts"
         
-        # Sort by creation time (newest first)
-        files_created.sort(key=os.path.getctime, reverse=True)
+        try:
+            if os.path.exists(charts_dir):
+                for file in os.listdir(charts_dir):
+                    if file.endswith(('.png', '.jpg', '.jpeg', '.svg')):
+                        files_created.append(os.path.join(charts_dir, file))
+                
+                # Sort by creation time (newest first)
+                if files_created:
+                    files_created.sort(key=os.path.getctime, reverse=True)
+        except Exception as e:
+            print(f"Warning: Could not check for generated charts: {e}")
+            files_created = []
         
         # Get judge evaluation if requested
         judge_evaluation = ""
@@ -537,19 +559,36 @@ def create_gradio_interface():
         
         # Event handlers
         def handle_submit(user_input, history, enable_judge):
-            history, _ = asyncio.run(process_query(user_input, history, enable_judge))
-            
-            # Get any generated visualizations
-            solution_dir = "/Users/helloworld/Projects/agentic-app-quickstart-w1/multi_agent_data_app"
-            image_files = []
-            for file in os.listdir(solution_dir):
-                if file.endswith(('.png', '.jpg', '.jpeg', '.svg')):
-                    image_files.append(os.path.join(solution_dir, file))
-            
-            # Sort by creation time (newest first)  
-            image_files.sort(key=os.path.getctime, reverse=True)
-            
-            return history, "", image_files if image_files else None
+            """Handle form submission synchronously"""
+            try:
+                # Run the async process_query function
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    history, _ = loop.run_until_complete(process_query(user_input, history, enable_judge))
+                finally:
+                    loop.close()
+                
+                # Get any generated visualizations from the charts directory
+                charts_dir = "/app/charts"
+                if os.path.exists(charts_dir):
+                    image_files = []
+                    for file in os.listdir(charts_dir):
+                        if file.endswith(('.png', '.jpg', '.jpeg', '.svg')):
+                            image_files.append(os.path.join(charts_dir, file))
+                    
+                    # Sort by creation time (newest first)  
+                    if image_files:
+                        image_files.sort(key=os.path.getctime, reverse=True)
+                        return history, "", image_files
+                
+                return history, "", None
+                
+            except Exception as e:
+                print(f"Error in handle_submit: {e}")
+                history = history or []
+                history.append([user_input, f"❌ Error processing request: {str(e)}"])
+                return history, "", None
         
         submit_btn.click(
             handle_submit,

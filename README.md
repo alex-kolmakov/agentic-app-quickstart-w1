@@ -1,87 +1,154 @@
-## Mastering AI Agents and MCP: Build Enterprise Agentic Apps
-# Agentic App Quickstart
+# Dockerized Multi-Agent Data Analysis Application
 
-This repo contains code examples, templates and assignments for the [Mastering AI Agents and MCP: Build Enterprise Agentic Apps](https://maven.com/rafael-pierre/building-agentic-ai-apps-with-mcp) [Maven](https://www.maven.com) course.
+This application provides a multi-agent system for CSV data analysis with advanced visualization capabilities, now fully containerized with Docker and integrated with Phoenix Arize for tracing.
 
 ## 🚀 Quick Start
 
-### Use this template
+### Prerequisites
+- Docker and Docker Compose installed
+- `.env` file with your API keys (see Environment Variables section)
 
-This repo is a Github Template. You can quickly use it by creating on the "Use Template" button on top right. You can then create a clone of this repo in your own organization or profile. If you're not familiar with Templates, this is a nice guide: [link](https://dev.to/jajera/how-to-create-and-use-a-github-repository-template-2g7l)
+### Running the Application
 
-### Option 1: GitHub Codespaces (Recommended)
+1. **Start all services:**
+   ```bash
+   docker-compose up -d
+   ```
 
-1. Click the "Code" button on this repository
-2. Select "Codespaces" tab
-3. Click "Create codespace on main"
-4. Wait for the environment to set up automatically
+2. **Access the applications:**
+   - **Main Application**: http://localhost:7860
+   - **Phoenix Tracing UI**: http://localhost:6006
 
-Need more details? Check out this [link](https://docs.github.com/en/enterprise-cloud@latest/codespaces/developing-in-a-codespace/creating-a-codespace-from-a-template).
+3. **Stop the services:**
+   ```bash
+   docker-compose down
+   ```
 
-### Option 2: Local Development Container
+## 🔧 Environment Variables
 
-**Prerequisites:**
-- [Docker](https://docs.docker.com/get-docker/)
-- [Visual Studio Code](https://code.visualstudio.com/)
-- [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+Create a `.env` file in the root directory with your configuration:
 
-**Steps:**
-1. Clone this repository
-2. Open in VS Code
-3. When prompted, click "Reopen in Container" or use the command palette (`Cmd+Shift+P`) and select "Dev Containers: Reopen in Container"
-4. Wait for the container to build and set up
-
-### Option 3: Other IDEs
-
-You are free to use PyCharm, Cursor, Windsurf, Zed, etc. Flow is mostly similar to running VSCode locally.
-
-## 🛠️ What's Included
-
-The development environment comes pre-configured with:
-
-- **Python 3.13**
-- **[uv](https://github.com/astral-sh/uv)** - Modern, fast Python package manager
-- **[openai-agents](https://openai.github.io/openai-agents-python/)** - Core library for agentic applications
-- **[marimo](https://marimo.io/)** - Modern, interactive development notebooks
-- **[FastAPI](https://fastapi.tiangolo.com/)** - Modern web framework for APIs
-- **Development tools** - ruff, pytest
-
-## GPT API Keys
-
-Configure the following environment variables in `.env`:
-
-```
+```env
 # OpenAI API Configuration
-OPENAI_API_ENDPOINT="api_url"
-OPENAI_API_KEY="your_openai_api_key_here"
+OPENAI_API_KEY=your_openai_api_key_here
+
+# Phoenix Configuration (optional - defaults provided)
+PHOENIX_ENDPOINT=http://phoenix:6006
+PHOENIX_PROJECT_NAME=agentic-app-quickstart
+
+# Gradio Configuration (optional - defaults provided)
+GRADIO_SERVER_NAME=0.0.0.0
+GRADIO_SERVER_PORT=7860
 ```
 
-🔴 **IMPORTANT**: `.env` is already included in `.gitignore`, so it won't be pushed to your Github Repo. Don't remove it from there and don't store these credentials elsewhere, otherwise the will be publicly available!
+## 📊 Features
 
-## 📦 Package Management
+### Multi-Agent System
+- **📁 DataLoaderAgent**: File operations and data preparation
+- **📊 AnalyticsAgent**: Statistical calculations and analysis  
+- **📈 VisualizationAgent**: Chart creation and visual insights
+- **💬 CommunicationAgent**: User-friendly response formatting
 
-This template uses [uv](https://github.com/astral-sh/uv) for fast and reliable Python package management:
+### Visualization Capabilities
+- 📈 Bar charts for categorical comparisons
+- 🔍 Scatter plots for relationship exploration
+- 📦 Box plots for outlier detection
 
+### Tracing & Monitoring
+- 🔍 Real-time tracing with Phoenix Arize
+- 📊 Performance monitoring and debugging
+- 🕒 Conversation history tracking
+
+## 🛠️ Development
+
+### Building the Application
 ```bash
-# Install dependencies
-pip install -U pip uv
-uv sync
+# Build the application image
+docker-compose build app
 
-# Add new packages
-uv add package-name
-uv venv
-
-# Run commands with uv run
-uv run python examples/code/01...
+# Build with no cache
+docker-compose build --no-cache app
 ```
 
-## 🔧 Customization
+### Viewing Logs
+```bash
+# View all logs
+docker-compose logs
 
-You can customize the development environment by editing:
-- `.devcontainer/devcontainer.json` - Container configuration
-- `.devcontainer/setup.sh` - Installation script
+# View specific service logs
+docker-compose logs app
+docker-compose logs phoenix
 
+# Follow logs in real-time
+docker-compose logs -f app
+```
 
-## Troubleshooting & Support
+### Development Mode
+For development, you can mount your local code:
 
-- Questions? Bugs? Please reach out in the #help Slack Channel for this course!
+```yaml
+# Add to docker-compose.yml under app service volumes:
+volumes:
+  - ./multi_agent_data_app:/app/multi_agent_data_app
+  - ./charts:/app/charts
+  - ./.env:/app/.env:ro
+```
+
+## 📁 Data Files
+
+Place your CSV files in the `multi_agent_data_app/data/` directory. The application comes with sample files:
+- `employee_data.csv`
+- `sample_sales.csv` 
+- `weather_data.csv`
+
+## 🐛 Troubleshooting
+
+### Phoenix Not Starting
+```bash
+# Check Phoenix logs
+docker-compose logs phoenix
+
+# Restart Phoenix service
+docker-compose restart phoenix
+```
+
+### Application Connection Issues
+```bash
+# Check if Phoenix is healthy
+curl http://localhost:6006/health
+
+# Restart the application
+docker-compose restart app
+```
+
+### Port Conflicts
+If ports 7860 or 6006 are already in use, modify the port mappings in `docker-compose.yml`:
+
+```yaml
+services:
+  app:
+    ports:
+      - "8080:7860"  # Change host port to 8080
+  phoenix:
+    ports:
+      - "6007:6006"  # Change host port to 6007
+```
+
+## 🔄 Updates
+
+To update the application:
+1. Pull the latest code
+2. Rebuild and restart:
+   ```bash
+   docker-compose down
+   docker-compose build --no-cache
+   docker-compose up -d
+   ```
+
+## 📈 Monitoring
+
+Access the Phoenix UI at http://localhost:6006 to:
+- View real-time traces of agent interactions
+- Monitor performance metrics
+- Debug conversation flows
+- Analyze system behavior

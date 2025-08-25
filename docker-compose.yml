@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database for Phoenix
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: phoenix
+      POSTGRES_PASSWORD: phoenix
+      POSTGRES_DB: phoenix
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  # Phoenix Arize tracing server with PostgreSQL backend
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    ports:
+      - "6006:6006"  # Phoenix UI and OTLP HTTP collector
+      - "4317:4317"  # OTLP gRPC collector
+    environment:
+      - PHOENIX_SQL_DATABASE_URL=postgresql://phoenix:phoenix@postgres:5432/phoenix
+      - PHOENIX_PORT=6006
+      - PHOENIX_HOST=0.0.0.0
+      - PHOENIX_WORKING_DIR=/mnt/data
+    volumes:
+      - phoenix_data:/mnt/data
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+
+  # Your multi-agent data application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "7860:7860"
+    environment:
+      - PHOENIX_ENDPOINT=http://phoenix:6006
+      - PHOENIX_PROJECT_NAME=agentic-app-quickstart
+      - GRADIO_SERVER_NAME=0.0.0.0
+      - GRADIO_SERVER_PORT=7860
+    volumes:
+      - ./multi_agent_data_app/data:/app/multi_agent_data_app/data
+      - ./charts:/app/charts
+      - ./.env:/app/.env:ro
+    depends_on:
+      - phoenix
+    networks:
+      - app-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  phoenix_data:
+
+networks:
+  app-network:
+    driver: bridge

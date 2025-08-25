@@ -39,25 +39,43 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from multi_agent_data_app.custom_agents import create_gradio_interface
 
 
-async def main():
+def main():
     """Main function to run the multi-agent data analysis & visualization system."""
 
     print("\n🌐 Starting Gradio Web Interface...")
-    interface = create_gradio_interface()
-    interface.launch(
-        share=False,
-        server_name="127.0.0.1",
-        server_port=7860,
-        show_error=True
-    )
+    
+    # Get configuration from environment variables for Docker compatibility
+    server_name = os.getenv("GRADIO_SERVER_NAME", "0.0.0.0")
+    server_port = int(os.getenv("GRADIO_SERVER_PORT", "7860"))
+    
+    print(f"   🌍 Server: {server_name}:{server_port}")
+    
+    try:
+        interface = create_gradio_interface()
+        print("   ✅ Interface created successfully")
+        
+        # Launch with proper Docker settings
+        interface.launch(
+            share=False,
+            server_name=server_name,
+            server_port=server_port,
+            show_error=True,
+            quiet=False,
+            show_api=False,
+            prevent_thread_lock=False  # Allow blocking in Docker
+        )
+    except Exception as e:
+        print(f"   ❌ Error creating interface: {e}")
+        raise
 
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        main()
     except KeyboardInterrupt:
         print("\n\n👋 Thanks for using the Multi-Agent Data Analysis & Visualization System!")
         print("🎨 Don't forget to check your directory for any generated charts!")
     except Exception as e:
         print(f"\n❌ An unexpected error occurred: {str(e)}")
         print("Please check your setup and try again.")
+        sys.exit(1)
