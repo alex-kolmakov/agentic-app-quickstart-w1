@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+trajectory_evaluator/outputs/*
+charts/*
+
 # Distribution / packaging
 .Python
 build/

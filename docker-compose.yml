@@ -31,27 +31,33 @@ services:
     networks:
       - app-network
 
-  # Your multi-agent data application
+  # Multi-agent data analysis application
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     ports:
-      - "7860:7860"
-    environment:
-      - PHOENIX_ENDPOINT=http://phoenix:6006
-      - PHOENIX_PROJECT_NAME=agentic-app-quickstart
-      - GRADIO_SERVER_NAME=0.0.0.0
-      - GRADIO_SERVER_PORT=7860
+      - "7860:7860"  # Gradio UI
+    env_file:
+      - .env
     volumes:
-      - ./multi_agent_data_app/data:/app/multi_agent_data_app/data
-      - ./charts:/app/charts
-      - ./.env:/app/.env:ro
+      - ./charts:/app/charts  # Mount charts directory for persistence
     depends_on:
       - phoenix
     networks:
       - app-network
-    restart: unless-stopped
+
+  # Trajectory evaluation service
+  trajectory-evaluator:
+    build: ./trajectory_evaluator
+    env_file:
+      - .env
+    volumes:
+      - ./trajectory_evaluator/outputs:/app/outputs
+    depends_on:
+      - phoenix
+    networks:
+      - app-network
+    # Uncomment to run evaluation automatically
+    command: sh -c "sleep 15 && python main.py --lookback-days 1"
 
 volumes:
   postgres_data:
