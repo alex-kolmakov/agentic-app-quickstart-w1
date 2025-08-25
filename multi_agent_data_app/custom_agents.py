@@ -3,11 +3,19 @@ Multi-Agent CSV Data Analysis System with Visualization
 
 This module implements a specialized multi-agent approach for CSV data analysis with
 advanced visualization capabilities. It provides intelligent systems that can load CSV files,
-analyze data, create insightful visualizations, and answer natural language questions.
-
-Features:
+analyze data, create insightful visualizations, and answer natural language qu    print("• 📈 Visualization: Creates charts and plots")
+    print()
+    print("🎨 Visualization Capabilities:")
+    print("• 📈 Bar Charts - Compare categories")
+    print("• 🔍 Scatter Plots - Explore relationships")
+    print("• 📦 Box Plots - Detect outliers")
+    print()
+    print("💡 Example commands:")
+    print('   "Load employee_data.csv and analyze the data"')
+    print('   "Create a scatter plot of salary vs performance"')
+    print('   "Make a bar chart showing average salary by department"')eatures:
 - 🤖🤖🤖 Multi-Agent System: Specialized agents for different aspects
-- 📈 Data Visualization: Charts, plots, and interactive dashboards
+- 📈 Data Visualization: Charts and plots
 - 💾 Memory: Conversation history and context preservation
 - 🛡️ Error Handling: Robust error handling for user-friendly experience
 - 🗣️ Natural Language Interface: Understands and responds to human questions
@@ -21,15 +29,27 @@ Agent Specialists:
 
 import asyncio
 from agents import Agent, Runner, SQLiteSession, set_tracing_disabled
-from agentic_app_quickstart.examples.google_helpers import get_model
+from phoenix.otel import register
+from multi_agent_data_app.helpers.helpers import get_model
+from multi_agent_data_app.helpers.google_helpers import get_model as get_judge_model
 from datetime import datetime
 import gradio as gr
 import os
-from tools import AVAILABLE_TOOLS
+from multi_agent_data_app.tools import AVAILABLE_TOOLS
+from dotenv import load_dotenv
+from openinference.instrumentation.openai import OpenAIInstrumentor
+OpenAIInstrumentor().uninstrument()
 
-# Disable detailed logging for cleaner output
-set_tracing_disabled(True)
+load_dotenv()
 
+# # Enable Phoenix tracing for monitoring agent interactions
+tracer_provider = register(
+    project_name="agentic-test",
+    endpoint="https://app.phoenix.arize.com/s/feanaur2193/v1/traces",
+    batch=True,
+    auto_instrument=True
+)
+OpenAIInstrumentor().instrument(tracer_provider=tracer_provider)
 
 # =============================================================================
 # MULTI-AGENT SYSTEM WITH VISUALIZATION 🤖🤖🤖📈
@@ -105,7 +125,6 @@ When performing analysis:
 - Ensure data is properly loaded before calculations
 - Handle non-numeric data gracefully
 - Provide context with your calculations (not just numbers)
-- Hand off to Visualization Agent for charts and graphs
 - Hand off to Communication Agent for user-friendly presentation
 - Suggest related analyses that might be valuable
 
@@ -124,12 +143,9 @@ visualization_agent = Agent(
 
 Your expertise includes:
 📈 Chart Creation:
-- Histograms for distribution analysis
 - Bar charts for categorical comparisons
 - Scatter plots for relationship exploration
 - Box plots for outlier detection and distribution
-- Correlation heatmaps for pattern discovery
-- Comprehensive dashboards for overview
 
 🎨 Visual Design:
 - Choosing appropriate chart types for data
@@ -154,8 +170,7 @@ When creating visualizations:
 You focus on making data insights visual and accessible!""",
     model=get_model(),
     tools=[tool for tool in AVAILABLE_TOOLS if tool.name in [
-        'create_histogram', 'create_bar_chart', 'create_scatter_plot', 
-        'create_box_plot', 'create_correlation_heatmap', 'create_data_summary_dashboard'
+        'create_bar_chart', 'create_scatter_plot', 'create_box_plot'
     ]]
 )
 
@@ -217,6 +232,86 @@ multi_agents = {
     "communication": communication_agent
 }
 
+# =============================================================================
+# LLM-AS-A-JUDGE SYSTEM 🏛️⚖️
+# =============================================================================
+
+# Judge Agent - Evaluates response quality using different model
+judge_agent = Agent(
+    name="JudgeAgent",
+    instructions="""You are an LLM Judge that evaluates the quality of data analysis responses.
+
+Your role is to assess responses on multiple dimensions:
+
+📊 **Technical Accuracy**:
+- Are the statistical calculations correct?
+- Are the data interpretations sound?
+- Are the visualizations appropriate for the data type?
+
+💬 **Communication Quality**:
+- Is the response clear and understandable?
+- Are technical concepts explained appropriately?
+- Is the tone helpful and engaging?
+
+🎯 **Completeness**:
+- Does the response fully address the user's question?
+- Are important insights highlighted?
+- Are relevant follow-up suggestions provided?
+
+🔍 **Professional Standards**:
+- Is the analysis methodologically sound?
+- Are limitations or assumptions acknowledged?
+- Is the confidence level appropriate?
+
+Provide your evaluation as a score from 1-10 and brief constructive feedback.
+Focus on being helpful and educational rather than purely critical.
+
+Return your judgment in this format:
+**Quality Score: X/10**
+**Strengths:** [Key strengths]
+**Areas for Improvement:** [Specific suggestions]
+**Overall Assessment:** [Brief summary]""",
+    model=get_judge_model(),  # Using Google Gemini as judge
+    tools=[]
+)
+
+async def judge_response(user_question: str, agent_response: str, session_id: str = "judge_session") -> str:
+    """
+    Evaluate the quality of an agent response using LLM-as-a-judge.
+    
+    Args:
+        user_question (str): Original user question
+        agent_response (str): Response from the multi-agent system
+        session_id (str): Session ID for judge evaluation
+        
+    Returns:
+        str: Judge's evaluation and feedback
+    """
+    try:
+        # Create judge session
+        judge_session = SQLiteSession(session_id=f"judge_{session_id}")
+        
+        # Construct evaluation prompt
+        evaluation_prompt = f"""Please evaluate this data analysis response:
+
+**User Question:** {user_question}
+
+**Agent Response:** {agent_response}
+
+Please provide your assessment focusing on technical accuracy, communication quality, completeness, and professional standards."""
+
+        # Get judge evaluation
+        judge_result = await Runner.run(
+            starting_agent=judge_agent,
+            input=evaluation_prompt,
+            session=judge_session
+        )
+        
+        return judge_result.final_output
+        
+    except Exception as e:
+        return f"⚖️ Judge evaluation unavailable: {str(e)}"
+
 
 # =============================================================================
 # CONVERSATION FUNCTION
@@ -271,7 +366,7 @@ async def run_multi_agent_conversation():
                 input=user_input,
                 session=session
             )
-            breakpoint()
+            
             # Display agent response  
             print(f"\n🤖 Agent: {result.final_output}")
             
@@ -279,192 +374,21 @@ async def run_multi_agent_conversation():
             print(f"\n❌ An error occurred: {str(e)}")
             print("Please try again or rephrase your question.")
 
-
-# =============================================================================
-# DEMO FUNCTION
-# =============================================================================
-
-async def run_demo():
-    """
-    Demonstrate the multi-agent visualization system with sample data.
-    """
-    print("🎪📈 Multi-Agent Data Visualization Demo")
-    print("=" * 45)
-    print("Choose your experience:")
-    print("1. 🤖🤖🤖📈 Interactive Multi-Agent System")
-    print("2. 🚀 Quick Visualization Demo")
-    
-    choice = input("\nEnter your choice (1 or 2): ").strip()
-    
-    if choice == "1":
-        await run_multi_agent_conversation()
-    elif choice == "2":
-        # Quick demo with visualizations
-        print("\n🚀 Quick Visualization Demo")
-        print("Creating sample visualizations with employee data...")
-        
-        session = SQLiteSession(session_id="demo_viz_session")
-        
-        # Demo questions with visualizations
-        demo_questions = [
-            "Load the employee_data.csv file",
-            "Create a comprehensive dashboard",
-            "Show me a histogram of salaries",
-            "Create a bar chart showing average salary by department",
-            "Make a scatter plot of salary vs performance score",
-            "Show a box plot of performance scores by department"
-        ]
-        
-        for question in demo_questions:
-            print(f"\n💬 Demo Question: {question}")
-            result = await Runner.run(
-                starting_agent=data_loader_agent,
-                input=question,
-                session=session
-            )
-            
-            print(f"🤖 Agent: {result.final_output}")
-            print("-" * 50)
-        
-        print("\n✨ Demo complete! Check your directory for generated visualizations.")
-    else:
-        print("Invalid choice. Please run the demo again.")
-
-
-
-# =============================================================================
-# HANDOFF TRACKING UTILITIES
-# =============================================================================
-
-def extract_handoff_map(result):
-    """
-    Extract and analyze agent handoffs from result.new_items
-    
-    Args:
-        result: RunResult object from agents framework
-        
-    Returns:
-        dict: Handoff analysis with timeline and agent interactions
-    """
-    handoff_map = {
-        "agents_involved": [],
-        "handoff_sequence": [],
-        "agent_contributions": {},
-        "timeline": [],
-        "total_handoffs": 0
-    }
-    
-    if not hasattr(result, 'new_items') or not result.new_items:
-        return handoff_map
-    
-    for i, item in enumerate(result.new_items):
-        if hasattr(item, 'agent') and item.agent:
-            agent_name = item.agent.name
-            
-            # Track unique agents
-            if agent_name not in handoff_map["agents_involved"]:
-                handoff_map["agents_involved"].append(agent_name)
-            
-            # Track sequence of agent activations
-            handoff_map["handoff_sequence"].append(agent_name)
-            
-            # Count contributions per agent
-            if agent_name not in handoff_map["agent_contributions"]:
-                handoff_map["agent_contributions"][agent_name] = 0
-            handoff_map["agent_contributions"][agent_name] += 1
-            
-            # Create timeline entry
-            timeline_entry = {
-                "step": i + 1,
-                "agent": agent_name,
-                "timestamp": datetime.now().isoformat(),
-                "item_type": type(item).__name__
-            }
-            handoff_map["timeline"].append(timeline_entry)
-    
-    # Calculate handoffs (transitions between different agents)
-    handoffs = 0
-    for i in range(1, len(handoff_map["handoff_sequence"])):
-        if handoff_map["handoff_sequence"][i] != handoff_map["handoff_sequence"][i-1]:
-            handoffs += 1
-    
-    handoff_map["total_handoffs"] = handoffs
-    
-    return handoff_map
-
-def format_handoff_summary(handoff_map):
-    """
-    Format the handoff map into a human-readable summary
-    
-    Args:
-        handoff_map (dict): Result from extract_handoff_map
-        
-    Returns:
-        str: Formatted summary of agent interactions
-    """
-    if not handoff_map["agents_involved"]:
-        return "🤖 No agent interactions detected."
-    
-    summary = []
-    summary.append("🔄 **AGENT HANDOFF ANALYSIS**")
-    summary.append("=" * 40)
-    
-    # Agent involvement
-    summary.append(f"👥 **Agents Involved:** {len(handoff_map['agents_involved'])}")
-    for agent in handoff_map["agents_involved"]:
-        emoji = {
-            "DataLoaderAgent": "📁",
-            "AnalyticsAgent": "📊", 
-            "VisualizationAgent": "📈",
-            "CommunicationAgent": "💬"
-        }.get(agent, "🤖")
-        contributions = handoff_map["agent_contributions"].get(agent, 0)
-        summary.append(f"  {emoji} {agent}: {contributions} contribution(s)")
-    
-    # Handoff sequence
-    summary.append(f"\n🔄 **Total Handoffs:** {handoff_map['total_handoffs']}")
-    
-    if len(handoff_map["handoff_sequence"]) > 1:
-        summary.append("📋 **Agent Sequence:**")
-        sequence_str = " → ".join([
-            {
-                "DataLoaderAgent": "📁 DataLoader",
-                "AnalyticsAgent": "📊 Analytics", 
-                "VisualizationAgent": "📈 Visualization",
-                "CommunicationAgent": "💬 Communication"
-            }.get(agent, f"🤖 {agent}") 
-            for agent in handoff_map["handoff_sequence"]
-        ])
-        summary.append(f"  {sequence_str}")
-    
-    # Timeline
-    if handoff_map["timeline"]:
-        summary.append("\n⏱️ **Execution Timeline:**")
-        for entry in handoff_map["timeline"]:
-            emoji = {
-                "DataLoaderAgent": "📁",
-                "AnalyticsAgent": "📊", 
-                "VisualizationAgent": "📈",
-                "CommunicationAgent": "💬"
-            }.get(entry["agent"], "🤖")
-            summary.append(f"  Step {entry['step']}: {emoji} {entry['agent']}")
-    
-    return "\n".join(summary)
-
 # =============================================================================
 # ENHANCED CONVERSATION FUNCTION WITH TRACKING
 # =============================================================================
 
-async def run_enhanced_conversation(user_input, session_id="gradio_session"):
+async def run_enhanced_conversation(user_input, session_id="gradio_session", include_judge=True):
     """
-    Run enhanced conversation with handoff tracking
+    Run enhanced conversation with optional judge evaluation
     
     Args:
         user_input (str): User's question or command
         session_id (str): Session identifier for memory
+        include_judge (bool): Whether to include judge evaluation
         
     Returns:
-        tuple: (agent_response, handoff_summary, files_created)
+        tuple: (agent_response, files_created, judge_evaluation)
     """
     try:
         # Create session for memory
@@ -477,26 +401,26 @@ async def run_enhanced_conversation(user_input, session_id="gradio_session"):
             session=session
         )
         
-        # Extract handoff information
-        handoff_map = extract_handoff_map(result)
-        handoff_summary = format_handoff_summary(handoff_map)
-        
         # Check for generated files (look for common image extensions)
-        import os
         files_created = []
-        solution_dir = "/Users/helloworld/Projects/agentic-app-quickstart-w1/agentic_app_quickstart/week_1/solution"
+        solution_dir = "/Users/helloworld/Projects/agentic-app-quickstart-w1/multi_agent_data_app"
         for file in os.listdir(solution_dir):
-            if file.endswith(('.png', '.jpg', '.jpeg', '.svg')) and file not in ['employee_dashboard.png']:
+            if file.endswith(('.png', '.jpg', '.jpeg', '.svg')):
                 files_created.append(os.path.join(solution_dir, file))
         
         # Sort by creation time (newest first)
         files_created.sort(key=os.path.getctime, reverse=True)
         
-        return result.final_output, handoff_summary, files_created
+        # Get judge evaluation if requested
+        judge_evaluation = ""
+        if include_judge and result.final_output:
+            judge_evaluation = await judge_response(user_input, result.final_output, session_id)
+        
+        return result.final_output, files_created, judge_evaluation
         
     except Exception as e:
         error_msg = f"❌ An error occurred: {str(e)}"
-        return error_msg, "🔄 No handoff analysis available due to error.", []
+        return error_msg, [], ""
 
 # =============================================================================
 # GRADIO INTERFACE
@@ -510,8 +434,8 @@ def create_gradio_interface():
     # State management for session
     session_state = {"session_id": f"gradio_{datetime.now().strftime('%Y%m%d_%H%M%S')}"}
     
-    async def process_query(user_input, history):
-        """Process user query and return response with handoff analysis"""
+    async def process_query(user_input, history, enable_judge):
+        """Process user query and return response with optional judge evaluation"""
         if not user_input.strip():
             return history, ""
         
@@ -519,18 +443,23 @@ def create_gradio_interface():
         history = history or []
         history.append([user_input, "Processing..."])
         
-        # Get response from agents
-        agent_response, handoff_summary, files_created = await run_enhanced_conversation(
+        # Get response from agents with optional judge evaluation
+        agent_response, files_created, judge_evaluation = await run_enhanced_conversation(
             user_input, 
-            session_state["session_id"]
+            session_state["session_id"],
+            include_judge=enable_judge
         )
         
         # Format complete response
-        complete_response = f"{agent_response}\n\n{handoff_summary}"
+        complete_response = agent_response
+        
+        # Add judge evaluation if enabled and available
+        if enable_judge and judge_evaluation:
+            complete_response += f"\n\n⚖️ **JUDGE EVALUATION**\n{judge_evaluation}"
         
         # Add files information if any were created
         if files_created:
-            chart_info = "\n\n� **Visualizations Generated:**\n"
+            chart_info = "\n\n📊 **Visualizations Generated:**\n"
             for file_path in files_created:
                 file_name = os.path.basename(file_path)
                 chart_info += f"  🖼️ {file_name}\n"
@@ -557,6 +486,8 @@ def create_gradio_interface():
         - 📊 **Analytics**: Statistical calculations and analysis
         - 📈 **Visualization**: Chart creation and visual insights
         - 💬 **Communication**: User-friendly response formatting
+        
+        **New Feature**: ⚖️ **LLM-as-a-Judge** evaluation using Google Gemini for response quality assessment!
         """)
         
         with gr.Row():
@@ -577,6 +508,13 @@ def create_gradio_interface():
                 with gr.Row():
                     submit_btn = gr.Button("🚀 Analyze", variant="primary")
                     clear_btn = gr.Button("🔄 Reset Session", variant="secondary")
+                
+                # Judge evaluation toggle
+                judge_toggle = gr.Checkbox(
+                    label="⚖️ Enable LLM Judge Evaluation (Gemini)",
+                    value=True,
+                    info="Get quality assessment of responses from an independent judge model"
+                )
             
             # Visualization column with gallery
             with gr.Column(scale=2):
@@ -589,38 +527,39 @@ def create_gradio_interface():
                     object_fit="contain"
                 )
                 gr.Markdown("""
-                *Ask the system to create visualizations like:*
-                - "Create a bar chart of department vs salary"
-                - "Show me a scatter plot of performance vs experience"
-                - "Make a histogram of employee ages"
+                **Example requests:**
+                - *"Create a bar chart of department vs salary"*
+                - *"Show me a scatter plot of performance vs experience"*
+                - *"Analyze the data and show basic statistics"*
+                - *"Make a box plot to detect outliers"*
                 """)
                 
         
         # Event handlers
-        def handle_submit(user_input, history):
-            history, _ = asyncio.run(process_query(user_input, history))
+        def handle_submit(user_input, history, enable_judge):
+            history, _ = asyncio.run(process_query(user_input, history, enable_judge))
             
             # Get any generated visualizations
-            solution_dir = "/Users/helloworld/Projects/agentic-app-quickstart-w1/agentic_app_quickstart/week_1/solution"
+            solution_dir = "/Users/helloworld/Projects/agentic-app-quickstart-w1/multi_agent_data_app"
             image_files = []
             for file in os.listdir(solution_dir):
-                if file.endswith(('.png', '.jpg', '.jpeg', '.svg')) and file not in ['employee_dashboard.png']:
+                if file.endswith(('.png', '.jpg', '.jpeg', '.svg')):
                     image_files.append(os.path.join(solution_dir, file))
             
-            # Sort by creation time (newest first)
+            # Sort by creation time (newest first)  
             image_files.sort(key=os.path.getctime, reverse=True)
             
             return history, "", image_files if image_files else None
         
         submit_btn.click(
             handle_submit,
-            inputs=[msg, chatbot],
+            inputs=[msg, chatbot, judge_toggle],
             outputs=[chatbot, msg, image_gallery]
         )
         
         msg.submit(
             handle_submit,
-            inputs=[msg, chatbot], 
+            inputs=[msg, chatbot, judge_toggle], 
             outputs=[chatbot, msg, image_gallery]
         )
         
@@ -630,7 +569,3 @@ def create_gradio_interface():
         )
     
     return interface
-
-
-if __name__ == "__main__":
-    asyncio.run(run_demo())

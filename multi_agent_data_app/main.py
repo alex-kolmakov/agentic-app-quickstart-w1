@@ -36,7 +36,7 @@ import gradio as gr
 # Add the parent directory to the path so we can import from the package
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from agentic_app_quickstart.week_1.solution.custom_agents import run_multi_agent_conversation, create_gradio_interface
+from multi_agent_data_app.custom_agents import create_gradio_interface
 
 
 async def main():
