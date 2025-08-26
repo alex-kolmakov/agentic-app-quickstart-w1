@@ -1,6 +1,51 @@
 version: '3.8'
 
+networks:
+  app-network:
+    driver: bridge
+
 services:
+  # Certificate generator
+  cert-generator:
+    build:
+      context: .
+      dockerfile: ./cert-generator/Dockerfile
+    volumes:
+      - ./cert-generator/certs:/certs
+    command: /generate-certs.sh
+
+  # MCP Server for data operations
+  mcp-server:
+    build:
+      context: .
+      dockerfile: ./mcp_server/Dockerfile
+    ports:
+      - "8000:8000"
+    networks:
+      - app-network
+    volumes:
+      - ./mcp_server/data:/app/data
+      - charts_volume:/app/charts
+
+  # Nginx proxy for TLS termination and routing
+  nginx-proxy:
+    build:
+      context: .
+      dockerfile: ./nginx/Dockerfile
+    ports:
+      - "8443:443"
+    networks:
+      - app-network
+    depends_on:
+      cert-generator:
+        condition: service_completed_successfully
+      mcp-server:
+        condition: service_started
+      unified-app:
+        condition: service_started
+    volumes:
+      - ./cert-generator/certs:/etc/nginx/certs
+
   # PostgreSQL database for Phoenix
   postgres:
     image: postgres:15
@@ -31,21 +76,29 @@ services:
     networks:
       - app-network
 
-  # Multi-agent data analysis application
-  app:
-    build: .
+  # Unified Multi-Agent Application with Gradio Interface
+  unified-app:
+    build:
+      context: .
+      dockerfile: ./multi_agent_unified.Dockerfile
     ports:
-      - "7860:7860"  # Gradio UI
-    env_file:
-      - .env
-    volumes:
-      - ./charts:/app/charts  # Mount charts directory for persistence
+      - "7860:7860"
+    environment:
+      - GRADIO_SERVER_NAME=0.0.0.0
+      - GRADIO_SERVER_PORT=7860
+      - PHOENIX_ENDPOINT=http://phoenix:6006
+      - PHOENIX_PROJECT_NAME=agentic-app-quickstart
     depends_on:
-      - phoenix
+      phoenix:
+        condition: service_started
     networks:
       - app-network
+    volumes:
+      - ./multi_agent_data_app/data:/app/multi_agent_data_app/data
+      - charts_volume:/app/charts
+    env_file: .env
 
-  # Trajectory evaluation service
+  # Trajectory evaluation service  
   trajectory-evaluator:
     build: ./trajectory_evaluator
     env_file:
@@ -62,7 +115,4 @@ services:
 volumes:
   postgres_data:
   phoenix_data:
-
-networks:
-  app-network:
-    driver: bridge
+  charts_volume:

@@ -1,0 +1,25 @@
+[project]
+name = "mcp-data-server"
+version = "0.1.0"
+description = "MCP Server for CSV data analysis with visualization tools"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastmcp>=2.11.3",
+    "polars>=1.17.1",
+    "matplotlib>=3.10.5",
+    "seaborn>=0.13.2",
+    "numpy>=1.24.0",
+]
+
+[dependency-groups]
+dev = [
+    "pyclean>=3.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
