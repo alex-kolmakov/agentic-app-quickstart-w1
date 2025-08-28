@@ -4,9 +4,14 @@ Gradio interface for the MCP-based multi-agent system
 
 import gradio as gr
 import asyncio
-from .agent.multi_agent_mcp import run_multi_agent_analysis
-from datetime import datetime
+import sys
 import os
+
+# Add the src directory to the Python path for proper imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from agent.multi_agent_mcp import run_multi_agent_analysis
+from datetime import datetime
 
 
 def create_gradio_interface():

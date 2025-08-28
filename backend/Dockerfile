@@ -15,9 +15,6 @@ RUN uv pip install --system -e .
 # Copy source code
 COPY backend/src /app/src
 
-# Create certs directory for TLS
-RUN mkdir -p /app/certs
-
 # Expose ports
 EXPOSE 7000
 EXPOSE 7860
@@ -27,7 +24,7 @@ ENV INTERFACE=fastapi
 
 # Run the appropriate interface
 CMD if [ "$INTERFACE" = "gradio" ]; then \
-        python -m src.gradio_app; \
+        python src/gradio_app.py; \
     else \
         python -m src.api.main; \
     fi

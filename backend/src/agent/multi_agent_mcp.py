@@ -27,7 +27,13 @@ import polars as pl
 import logging
 
 from .utils import get_mcp_server
-from ..llm.model import get_model
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from llm.model import get_model
 
 set_tracing_disabled(True)
 
