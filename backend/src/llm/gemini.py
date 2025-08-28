@@ -7,14 +7,14 @@ load_dotenv()
 
 def get_client():
     return AsyncOpenAI(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        base_url=os.getenv("OPENAI_API_ENDPOINT")
+        api_key=os.getenv("GEMINI_API_KEY"),
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
     )
 
 def get_model():
 
     model = OpenAIChatCompletionsModel(
-        model = "gpt-4.1",
+        model = "gemini-2.5-flash",
         openai_client=get_client()
     )
 
