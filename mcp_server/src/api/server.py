@@ -14,18 +14,49 @@ from datetime import datetime
 import logging
 from typing import List, Dict, Any
 
-logging.basicConfig(level=logging.DEBUG)
+# Setup debug logging
+DEBUG_MODE = os.getenv("MCP_DEBUG", "false").lower() == "true"
+log_level = logging.DEBUG if DEBUG_MODE else logging.INFO
+logging.basicConfig(
+    level=log_level,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Initialize FastMCP server
-MCP_TRANSPORT = os.getenv("MCP_TRANSPORT", "http")
+MCP_TRANSPORT = os.getenv("MCP_TRANSPORT", "streamable-http")
 mcp = FastMCP("Data Analysis Server")
 
 # Data directory path
 DATA_DIR = Path(__file__).parent.parent.parent / "data"
+CHARTS_DIR = Path("/app/charts")  # Charts directory for Docker volume
+
+# Ensure charts directory exists
+CHARTS_DIR.mkdir(exist_ok=True)
+
+# Set up matplotlib to use non-interactive backend for Docker
+plt.switch_backend('Agg')
+plt.style.use('seaborn-v0_8')
 
 # Global variable to store the current dataset (in memory for session)
 current_dataset = None
 current_filename = None
+
+def debug_log(func_name: str, args: dict, result: any = None, error: str = None):
+    """Debug logging function for MCP tool calls"""
+    if DEBUG_MODE:
+        log_msg = f"🔧 MCP Tool Call: {func_name}"
+        if args:
+            log_msg += f" | Args: {args}"
+        if result is not None:
+            if isinstance(result, (dict, list)):
+                log_msg += f" | Result keys: {list(result.keys()) if isinstance(result, dict) else f'List[{len(result)}]'}"
+            else:
+                log_msg += f" | Result: {str(result)[:100]}..."
+        if error:
+            log_msg += f" | ERROR: {error}"
+        logger.info(log_msg)
+        print(f"🔧 {func_name} called with {args}")  # Also print for immediate visibility
 
 
 @mcp.tool
@@ -39,6 +70,8 @@ async def investigate_directory(directory_path: str = None) -> List[Dict[str, An
     Returns:
         List[Dict]: List of file information dictionaries
     """
+    debug_log("investigate_directory", {"directory_path": directory_path})
+    
     try:
         # Default to the data directory if no path provided
         if directory_path is None:
@@ -49,16 +82,22 @@ async def investigate_directory(directory_path: str = None) -> List[Dict[str, An
                 dir_path = DATA_DIR / directory_path
         
         if not dir_path.exists():
-            return [{"error": f"Directory '{dir_path}' does not exist"}]
+            error_msg = f"Directory '{dir_path}' does not exist"
+            debug_log("investigate_directory", {"directory_path": directory_path}, error=error_msg)
+            return [{"error": error_msg}]
         
         if not dir_path.is_dir():
-            return [{"error": f"'{dir_path}' is not a directory"}]
+            error_msg = f"'{dir_path}' is not a directory"
+            debug_log("investigate_directory", {"directory_path": directory_path}, error=error_msg)
+            return [{"error": error_msg}]
         
         # Get all files in the directory
         files = [f for f in dir_path.iterdir() if f.is_file()]
         
         if not files:
-            return [{"info": f"Directory '{directory_path}' is empty"}]
+            result = [{"info": f"Directory '{directory_path}' is empty"}]
+            debug_log("investigate_directory", {"directory_path": directory_path}, result)
+            return result
         
         # Analyze each file
         file_info = []
@@ -100,10 +139,13 @@ async def investigate_directory(directory_path: str = None) -> List[Dict[str, An
             
             file_info.append(info)
         
+        debug_log("investigate_directory", {"directory_path": directory_path}, file_info)
         return file_info
         
     except Exception as e:
-        return [{"error": f"Error investigating directory: {str(e)}"}]
+        error_msg = f"Error investigating directory: {str(e)}"
+        debug_log("investigate_directory", {"directory_path": directory_path}, error=error_msg)
+        return [{"error": error_msg}]
 
 
 @mcp.tool
@@ -118,6 +160,7 @@ async def load_csv_file(file_path: str) -> Dict[str, Any]:
         Dict: Success message with basic dataset information
     """
     global current_dataset, current_filename
+    debug_log("load_csv_file", {"file_path": file_path})
     
     try:
         # Handle relative paths
@@ -130,11 +173,13 @@ async def load_csv_file(file_path: str) -> Dict[str, Any]:
             path_obj = DATA_DIR / Path(file_path).name
             if not path_obj.exists():
                 available_files = [f.name for f in DATA_DIR.glob("*.csv")]
-                return {
+                error_result = {
                     "status": "error",
                     "message": f"File not found: {file_path}",
                     "available_files": available_files
                 }
+                debug_log("load_csv_file", {"file_path": file_path}, error_result)
+                return error_result
         
         # Load the CSV file with polars
         current_dataset = pl.read_csv(path_obj)
@@ -143,39 +188,53 @@ async def load_csv_file(file_path: str) -> Dict[str, Any]:
         rows, cols = current_dataset.shape
         column_names = current_dataset.columns
         
-        return {
+        result = {
             "status": "success",
             "filename": current_filename,
             "rows": rows,
             "columns": cols,
             "column_names": column_names
         }
+        debug_log("load_csv_file", {"file_path": file_path}, result)
+        return result
         
     except Exception as e:
-        return {
+        error_result = {
             "status": "error", 
             "message": f"Error loading file: {str(e)}"
         }
+        debug_log("load_csv_file", {"file_path": file_path}, error=str(e))
+        return error_result
 
 
 @mcp.tool
 async def get_column_names() -> Dict[str, Any]:
     """Get all column names from the currently loaded dataset."""
-    if current_dataset is None:
-        return {"status": "error", "message": "No dataset loaded"}
+    debug_log("get_column_names", {})
     
-    return {
+    if current_dataset is None:
+        error_result = {"status": "error", "message": "No dataset loaded"}
+        debug_log("get_column_names", {}, error="No dataset loaded")
+        return error_result
+    
+    result = {
         "status": "success",
         "filename": current_filename,
         "columns": current_dataset.columns
     }
+    debug_log("get_column_names", {}, result)
+    return result
 
 
 @mcp.tool
 async def get_dataset_info() -> Dict[str, Any]:
     """Get basic information about the currently loaded dataset."""
+    debug_log("get_dataset_info", {})
+    
     if current_dataset is None:
-        return {"status": "error", "message": "No dataset loaded"}
+        error_result = {"status": "error", "message": "No dataset loaded"}
+        debug_log("get_dataset_info", {}, error="No dataset loaded")
+        return error_result
     
     rows, cols = current_dataset.shape
     
@@ -184,49 +243,65 @@ async def get_dataset_info() -> Dict[str, Any]:
     for col in current_dataset.columns:
         dtypes_info[col] = str(current_dataset[col].dtype)
     
-    # Get sample data
-    sample_data = current_dataset.head(3).to_dicts()
+    # Get sample data (first 3 rows)
+    sample_df = current_dataset.head(3)
+    sample_str = sample_df.to_pandas().to_string(index=False)
     
-    return {
+    result = {
         "status": "success",
         "filename": current_filename,
-        "shape": {"rows": rows, "columns": cols},
-        "column_types": dtypes_info,
-        "sample_data": sample_data
+        "rows": rows,
+        "columns": cols,
+        "dtypes": dtypes_info,
+        "sample_data": sample_str
     }
+    debug_log("get_dataset_info", {}, result)
+    return result
 
 
 @mcp.tool
 async def calculate_column_average(column_name: str) -> Dict[str, Any]:
     """Calculate the average (mean) value of a numeric column."""
+    debug_log("calculate_column_average", {"column_name": column_name})
+    
     if current_dataset is None:
-        return {"status": "error", "message": "No dataset loaded"}
+        error_result = {"status": "error", "message": "No dataset loaded"}
+        debug_log("calculate_column_average", {"column_name": column_name}, error="No dataset loaded")
+        return error_result
     
     if column_name not in current_dataset.columns:
-        return {
+        error_result = {
             "status": "error", 
             "message": f"Column '{column_name}' not found",
             "available_columns": current_dataset.columns
         }
+        debug_log("calculate_column_average", {"column_name": column_name}, error=f"Column not found")
+        return error_result
     
     try:
         # Use polars for calculation
         col_data = current_dataset.select(column_name).to_series()
         if col_data.dtype not in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]:
-            return {"status": "error", "message": f"Column '{column_name}' is not numeric"}
+            error_result = {"status": "error", "message": f"Column '{column_name}' is not numeric"}
+            debug_log("calculate_column_average", {"column_name": column_name}, error="Column not numeric")
+            return error_result
         
         average = col_data.mean()
         count = col_data.len()
         
-        return {
+        result = {
             "status": "success",
             "column": column_name,
             "average": average,
             "count": count
         }
+        debug_log("calculate_column_average", {"column_name": column_name}, result)
+        return result
         
     except Exception as e:
-        return {"status": "error", "message": f"Error calculating average: {str(e)}"}
+        error_result = {"status": "error", "message": f"Error calculating average: {str(e)}"}
+        debug_log("calculate_column_average", {"column_name": column_name}, error=str(e))
+        return error_result
 
 
 @mcp.tool
@@ -269,27 +344,79 @@ async def calculate_column_stats(column_name: str) -> Dict[str, Any]:
 
 
 @mcp.tool
-async def create_bar_chart(x_column: str, y_column: str = None, title: str = None) -> Dict[str, Any]:
+async def create_bar_chart(column_name: str, value_column: str = None, save_path: str = None) -> Dict[str, Any]:
     """Create a bar chart from the loaded dataset."""
+    debug_log("create_bar_chart", {"column_name": column_name, "value_column": value_column, "save_path": save_path})
+    
     if current_dataset is None:
-        return {"status": "error", "message": "No dataset loaded"}
+        error_result = {"status": "error", "message": "No dataset loaded"}
+        debug_log("create_bar_chart", {"column_name": column_name, "value_column": value_column}, error="No dataset loaded")
+        return error_result
+    
+    if column_name not in current_dataset.columns:
+        error_result = {
+            "status": "error", 
+            "message": f"Column '{column_name}' not found",
+            "available_columns": current_dataset.columns
+        }
+        debug_log("create_bar_chart", {"column_name": column_name, "value_column": value_column}, error=f"Column not found")
+        return error_result
+    
+    if value_column and value_column not in current_dataset.columns:
+        error_result = {
+            "status": "error", 
+            "message": f"Column '{value_column}' not found",
+            "available_columns": current_dataset.columns
+        }
+        debug_log("create_bar_chart", {"column_name": column_name, "value_column": value_column}, error=f"Value column not found")
+        return error_result
     
     try:
-        # This would create actual charts - for now return chart info
-        # In production, save to charts directory and return path
-        chart_info = {
+        # Create the chart using matplotlib
+        plt.figure(figsize=(10, 6))
+        
+        if value_column:
+            # Aggregate data for bar chart
+            df_pandas = current_dataset.to_pandas()
+            grouped = df_pandas.groupby(column_name)[value_column].mean().reset_index()
+            plt.bar(grouped[column_name], grouped[value_column])
+            plt.ylabel(f"Average {value_column}")
+        else:
+            # Count frequency for bar chart
+            df_pandas = current_dataset.to_pandas()
+            value_counts = df_pandas[column_name].value_counts()
+            plt.bar(value_counts.index, value_counts.values)
+            plt.ylabel("Count")
+        
+        plt.xlabel(column_name)
+        plt.title(f"Bar Chart: {column_name}" + (f" vs {value_column}" if value_column else " Distribution"))
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        
+        # Save chart to charts directory
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        chart_filename = f"bar_chart_{column_name}_{timestamp}.png"
+        chart_path = CHARTS_DIR / chart_filename
+        
+        plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        result = {
             "status": "success",
             "chart_type": "bar_chart",
-            "x_column": x_column,
-            "y_column": y_column,
-            "title": title or f"Bar Chart: {x_column} vs {y_column or 'Count'}",
-            "note": "Chart creation would be implemented with matplotlib/seaborn"
+            "chart_path": str(chart_path),
+            "chart_filename": chart_filename,
+            "column_name": column_name,
+            "value_column": value_column,
+            "title": f"Bar Chart: {column_name}" + (f" vs {value_column}" if value_column else " Distribution")
         }
-        
-        return chart_info
+        debug_log("create_bar_chart", {"column_name": column_name, "value_column": value_column}, result)
+        return result
         
     except Exception as e:
-        return {"status": "error", "message": f"Error creating chart: {str(e)}"}
+        error_result = {"status": "error", "message": f"Error creating chart: {str(e)}"}
+        debug_log("create_bar_chart", {"column_name": column_name, "value_column": value_column}, error=str(e))
+        return error_result
 
 
 @mcp.tool
@@ -529,38 +656,81 @@ async def filter_data(column_name: str, condition: str, value: str) -> Dict[str,
 @mcp.tool
 async def create_scatter_plot(x_column: str, y_column: str, color_column: str = None, title: str = None) -> Dict[str, Any]:
     """Create a scatter plot from the loaded dataset."""
+    debug_log("create_scatter_plot", {"x_column": x_column, "y_column": y_column, "color_column": color_column, "title": title})
+    
     if current_dataset is None:
-        return {"status": "error", "message": "No dataset loaded"}
+        error_result = {"status": "error", "message": "No dataset loaded"}
+        debug_log("create_scatter_plot", {"x_column": x_column, "y_column": y_column}, error="No dataset loaded")
+        return error_result
     
     if x_column not in current_dataset.columns:
-        return {
+        error_result = {
             "status": "error", 
             "message": f"X column '{x_column}' not found",
             "available_columns": current_dataset.columns
         }
+        debug_log("create_scatter_plot", {"x_column": x_column, "y_column": y_column}, error="X column not found")
+        return error_result
     
     if y_column not in current_dataset.columns:
-        return {
+        error_result = {
             "status": "error", 
             "message": f"Y column '{y_column}' not found",
             "available_columns": current_dataset.columns
         }
+        debug_log("create_scatter_plot", {"x_column": x_column, "y_column": y_column}, error="Y column not found")
+        return error_result
     
     try:
-        chart_info = {
+        # Create the scatter plot using matplotlib
+        plt.figure(figsize=(10, 6))
+        df_pandas = current_dataset.to_pandas()
+        
+        if color_column and color_column in current_dataset.columns:
+            # Color by a categorical column
+            unique_colors = df_pandas[color_column].unique()
+            colors = plt.cm.Set1(np.linspace(0, 1, len(unique_colors)))
+            
+            for i, category in enumerate(unique_colors):
+                mask = df_pandas[color_column] == category
+                plt.scatter(df_pandas[x_column][mask], df_pandas[y_column][mask], 
+                           c=[colors[i]], label=category, alpha=0.7)
+            plt.legend()
+        else:
+            # Simple scatter plot
+            plt.scatter(df_pandas[x_column], df_pandas[y_column], alpha=0.7)
+        
+        plt.xlabel(x_column)
+        plt.ylabel(y_column)
+        plt.title(title or f"Scatter Plot: {x_column} vs {y_column}")
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        
+        # Save chart to charts directory
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        chart_filename = f"scatter_plot_{x_column}_{y_column}_{timestamp}.png"
+        chart_path = CHARTS_DIR / chart_filename
+        
+        plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        result = {
             "status": "success",
             "chart_type": "scatter_plot",
+            "chart_path": str(chart_path),
+            "chart_filename": chart_filename,
             "x_column": x_column,
             "y_column": y_column,
             "color_column": color_column,
-            "title": title or f"Scatter Plot: {x_column} vs {y_column}",
-            "note": "Chart creation would be implemented with matplotlib/seaborn"
+            "title": title or f"Scatter Plot: {x_column} vs {y_column}"
         }
-        
-        return chart_info
+        debug_log("create_scatter_plot", {"x_column": x_column, "y_column": y_column}, result)
+        return result
         
     except Exception as e:
-        return {"status": "error", "message": f"Error creating scatter plot: {str(e)}"}
+        error_result = {"status": "error", "message": f"Error creating scatter plot: {str(e)}"}
+        debug_log("create_scatter_plot", {"x_column": x_column, "y_column": y_column}, error=str(e))
+        return error_result
 
 
 @mcp.tool
@@ -597,4 +767,4 @@ async def create_box_plot(column_name: str, group_column: str = None, title: str
 
 if __name__ == "__main__":
     logging.info("Starting MCP Data Analysis Server")
-    mcp.run(transport=MCP_TRANSPORT, host="0.0.0.0", port=8000)
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=8000)

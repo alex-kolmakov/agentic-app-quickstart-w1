@@ -5,15 +5,6 @@ networks:
     driver: bridge
 
 services:
-  # Certificate generator
-  cert-generator:
-    build:
-      context: .
-      dockerfile: ./cert-generator/Dockerfile
-    volumes:
-      - ./cert-generator/certs:/certs
-    command: /generate-certs.sh
-
   # MCP Server for data operations
   mcp-server:
     build:
@@ -26,25 +17,10 @@ services:
     volumes:
       - ./mcp_server/data:/app/data
       - charts_volume:/app/charts
-
-  # Nginx proxy for TLS termination and routing
-  nginx-proxy:
-    build:
-      context: .
-      dockerfile: ./nginx/Dockerfile
-    ports:
-      - "8443:443"
-    networks:
-      - app-network
-    depends_on:
-      cert-generator:
-        condition: service_completed_successfully
-      mcp-server:
-        condition: service_started
-      unified-app:
-        condition: service_started
-    volumes:
-      - ./cert-generator/certs:/etc/nginx/certs
+    environment:
+      - MCP_DEBUG=true
+      - MCP_TRANSPORT=http
+      - PYTHONUNBUFFERED=1
 
   # PostgreSQL database for Phoenix
   postgres:
@@ -88,9 +64,9 @@ services:
       - GRADIO_SERVER_PORT=7860
       - PHOENIX_ENDPOINT=http://phoenix:6006
       - PHOENIX_PROJECT_NAME=agentic-app-quickstart
-    depends_on:
-      phoenix:
-        condition: service_started
+      - MCP_SERVER_URL=http://mcp-server:8000/mcp
+      - MCP_DEBUG=true
+
     networks:
       - app-network
     volumes:
@@ -103,14 +79,17 @@ services:
     build: ./trajectory_evaluator
     env_file:
       - .env
+    environment:
+      - MCP_SERVER_URL=http://mcp-server:8000/mcp
     volumes:
       - ./trajectory_evaluator/outputs:/app/outputs
     depends_on:
       - phoenix
+      - mcp-server
     networks:
       - app-network
     # Uncomment to run evaluation automatically
-    command: sh -c "sleep 15 && python main.py --lookback-days 1"
+    # command: sh -c "sleep 15 && python main.py --lookback-days 1"
 
 volumes:
   postgres_data:

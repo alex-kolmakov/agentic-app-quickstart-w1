@@ -26,7 +26,7 @@ import json
 import polars as pl
 import logging
 
-from .utils import get_mcp_server, get_mcp_config
+from .utils import get_mcp_server
 from ..llm.model import get_model
 
 set_tracing_disabled(True)
@@ -230,11 +230,6 @@ async def run_multi_agent_analysis(question: str, session_id: str = "default"):
         visualization_agent.mcp_servers = [mcp_server]
         # communication_agent doesn't need direct data tools
         
-        # Configure MCP for TLS if needed
-        mcp_config = get_mcp_config()
-        data_loader_agent.mcp_config = mcp_config
-        analytics_agent.mcp_config = mcp_config
-        visualization_agent.mcp_config = mcp_config
         
         # Run the multi-agent system
         response = await Runner.run(
