@@ -34,6 +34,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from llm.model import get_model
+from llm.gemini_model import get_gemini_model
 
 # Data Loader Agent - Uses MCP tools for file operations
 data_loader_agent = Agent(
@@ -188,6 +189,52 @@ Remember: Your goal is to make data analysis feel approachable, valuable, and vi
     model=get_model()
 )
 
+# Judge Agent - Evaluates response quality using Gemini
+judge_agent = Agent(
+    name="JudgeAgent",
+    instructions="""You are an LLM Judge that evaluates the quality of data analysis responses.
+
+Your role is to assess responses on multiple dimensions:
+
+📊 **Technical Accuracy**:
+- Are the statistical calculations correct?
+- Are the data interpretations sound?
+- Are the visualizations appropriate for the data type?
+
+🎯 **Completeness**:
+- Does the response fully address the user's question?
+- Are important insights highlighted?
+- Are follow-up suggestions provided?
+
+💬 **Communication Quality**:
+- Is the explanation clear and understandable?
+- Is the tone appropriate and engaging?
+- Are technical concepts explained accessibly?
+
+📈 **Actionability**:
+- Does the response provide actionable insights?
+- Are next steps or follow-up analyses suggested?
+- Is the information presented in a useful way?
+
+**Evaluation Process**:
+1. Read the original user question
+2. Review the agent's response
+3. Score each dimension (1-5 scale)
+4. Provide specific feedback for improvement
+5. Give an overall assessment
+
+**Output Format**:
+- Technical Accuracy: X/5 - [brief explanation]
+- Completeness: X/5 - [brief explanation]  
+- Communication: X/5 - [brief explanation]
+- Actionability: X/5 - [brief explanation]
+- Overall Score: X/5
+- Key Strengths: [bullet points]
+- Areas for Improvement: [bullet points]""",
+    model=get_gemini_model(),
+    tools=[]
+)
+
 # Set up handoffs between agents (preserve original multi-agent orchestration)
 data_loader_agent.handoffs = [analytics_agent, visualization_agent, communication_agent]
 analytics_agent.handoffs = [data_loader_agent, visualization_agent, communication_agent]
@@ -195,16 +242,49 @@ visualization_agent.handoffs = [data_loader_agent, analytics_agent, communicatio
 communication_agent.handoffs = [data_loader_agent, analytics_agent, visualization_agent]
 
 
-async def run_multi_agent_analysis(question: str, session_id: str = "default"):
+async def run_judge_evaluation(question: str, response: str) -> str:
+    """
+    Run judge evaluation on a response
+    
+    Args:
+        question (str): Original user question
+        response (str): Agent response to evaluate
+        
+    Returns:
+        str: Judge evaluation
+    """
+    
+    evaluation_prompt = f"""
+    **Original Question**: {question}
+    
+    **Agent Response**: {response}
+    
+    Please evaluate this response according to your instructions.
+    """
+    
+    try:
+        result = await Runner.run(
+            starting_agent=judge_agent,
+            input=evaluation_prompt,
+            session=SQLiteSession("judge_evaluations")
+        )
+        
+        return result.final_output
+    except Exception as e:
+        return f"❌ Judge evaluation failed: {str(e)}"
+
+
+async def run_multi_agent_analysis(question: str, session_id: str = "default", enable_judge: bool = False):
     """
     Run the multi-agent data analysis system with MCP tools
     
     Args:
         question (str): User's data analysis question
         session_id (str): Session identifier for conversation history
+        enable_judge (bool): Whether to run judge evaluation
         
     Returns:
-        str: Final response from the multi-agent system
+        str: Final response from the multi-agent system (with optional judge evaluation)
     """
     
     # List of all MCP tools that were migrated from tools.py
@@ -242,7 +322,17 @@ async def run_multi_agent_analysis(question: str, session_id: str = "default"):
             session=SQLiteSession(session_id)
         )
         
-        return response.final_output
+        final_response = response.final_output
+        
+        # Add judge evaluation if enabled
+        if enable_judge:
+            try:
+                judge_evaluation = await run_judge_evaluation(question, final_response)
+                final_response += f"\n\n## 🏛️ Judge Evaluation\n\n{judge_evaluation}"
+            except Exception as e:
+                final_response += f"\n\n## 🏛️ Judge Evaluation\n\n❌ Evaluation failed: {str(e)}"
+        
+        return final_response
 
 
 # Keep the agent registry for compatibility
@@ -250,5 +340,6 @@ multi_agents = {
     "data_loader": data_loader_agent,
     "analytics": analytics_agent,
     "visualization": visualization_agent,
-    "communication": communication_agent
+    "communication": communication_agent,
+    "judge": judge_agent
 }
