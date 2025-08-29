@@ -34,6 +34,24 @@ CHARTS_DIR = Path("/app/charts")  # Charts directory for Docker volume
 # Ensure charts directory exists
 CHARTS_DIR.mkdir(exist_ok=True)
 
+# Debug logging for directory paths
+print(f"🔍 DATA_DIR: {DATA_DIR}")
+print(f"🔍 DATA_DIR exists: {DATA_DIR.exists()}")
+print(f"🔍 CHARTS_DIR: {CHARTS_DIR}")
+print(f"🔍 CHARTS_DIR exists: {CHARTS_DIR.exists()}")
+if DATA_DIR.exists():
+    print(f"🔍 DATA_DIR contents: {list(DATA_DIR.iterdir())}")
+else:
+    print(f"🔍 Current working directory: {Path.cwd()}")
+    print(f"🔍 __file__ location: {Path(__file__)}")
+    print(f"🔍 Calculated DATA_DIR: {DATA_DIR.absolute()}")
+    # Try alternative paths
+    alt_data_dir = Path("/app/data")
+    print(f"🔍 Alternative /app/data exists: {alt_data_dir.exists()}")
+    if alt_data_dir.exists():
+        print(f"🔍 Alternative /app/data contents: {list(alt_data_dir.iterdir())}")
+        DATA_DIR = alt_data_dir
+
 # Set up matplotlib to use non-interactive backend for Docker
 plt.switch_backend('Agg')
 plt.style.use('seaborn-v0_8')
@@ -758,6 +776,47 @@ async def create_box_plot(column_name: str, group_column: str = None, title: str
         
     except Exception as e:
         return {"status": "error", "message": f"Error creating box plot: {str(e)}"}
+
+
+@mcp.tool 
+async def list_available_charts() -> Dict[str, Any]:
+    """List all available chart files in the charts directory."""
+    debug_log("list_available_charts", {})
+    
+    try:
+        if not CHARTS_DIR.exists():
+            return {
+                "status": "error",
+                "message": f"Charts directory {CHARTS_DIR} does not exist"
+            }
+        
+        chart_files = list(CHARTS_DIR.glob("*.png"))
+        chart_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)  # Most recent first
+        
+        charts_info = []
+        for chart_path in chart_files:
+            stat = chart_path.stat()
+            charts_info.append({
+                "filename": chart_path.name,
+                "path": str(chart_path),
+                "size_mb": stat.st_size / (1024 * 1024),
+                "created": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+            })
+        
+        result = {
+            "status": "success",
+            "charts_directory": str(CHARTS_DIR),
+            "total_charts": len(charts_info),
+            "charts": charts_info
+        }
+        
+        debug_log("list_available_charts", {}, result)
+        return result
+        
+    except Exception as e:
+        error_msg = f"Error listing charts: {str(e)}"
+        debug_log("list_available_charts", {}, error=error_msg)
+        return {"status": "error", "message": error_msg}
 
 
 # Add more tools following the same pattern...

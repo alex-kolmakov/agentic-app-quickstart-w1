@@ -98,9 +98,11 @@ def create_gradio_interface():
         asyncio.set_event_loop(loop)
         try:
             response = loop.run_until_complete(process_query_async(message, enable_judge))
-            # Update gallery after processing
+            
+            # Update gallery after processing (in case charts were created)
             updated_gallery = get_chart_gallery()
-            return response, gr.update(value=updated_gallery)
+            
+            return response, updated_gallery
         finally:
             loop.close()
     

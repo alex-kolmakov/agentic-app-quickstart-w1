@@ -19,13 +19,6 @@ except ImportError as e:
     # Fallback to minimal implementation if agents package has issues
     raise ImportError("Could not import agents package - check dependencies")
 
-from textwrap import dedent
-from openai import OpenAI
-from typing import List, Dict, Any, Optional
-import json
-import polars as pl
-import logging
-
 from .utils import get_mcp_server
 import sys
 import os
@@ -57,7 +50,11 @@ Your responsibilities:
 
 🎯 Smart File Selection:
 - When users ask for specific types of data (e.g., "weather data", "sales data"), 
-  first use investigate_directory() to find relevant files
+  first use investigate_directory() to find relevant files (try "data" or leave path empty)
+- If investigate_directory() doesn't find files, try load_csv_file() directly with common filenames:
+  * "employee_data.csv" for employee/HR data
+  * "sample_sales.csv" for sales data  
+  * "weather_data.csv" for weather data
 - Analyze filenames and content hints to recommend the best file to load
 - Provide clear explanations for file selection decisions
 
@@ -303,7 +300,8 @@ async def run_multi_agent_analysis(question: str, session_id: str = "default", e
         "filter_data",
         "create_bar_chart",
         "create_scatter_plot", 
-        "create_box_plot"
+        "create_box_plot",
+        "list_available_charts"
     ]
     
     async with get_mcp_server(allowed_tool_names=allowed_tool_names) as mcp_server:
