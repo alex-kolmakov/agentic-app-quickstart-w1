@@ -74,12 +74,10 @@ async def investigate_directory(directory_path: str = None) -> List[Dict[str, An
     
     try:
         # Default to the data directory if no path provided
-        if directory_path is None:
+        if directory_path is None or directory_path == "data":
             dir_path = DATA_DIR
         else:
             dir_path = Path(directory_path)
-            if not dir_path.is_absolute():
-                dir_path = DATA_DIR / directory_path
         
         if not dir_path.exists():
             error_msg = f"Directory '{dir_path}' does not exist"

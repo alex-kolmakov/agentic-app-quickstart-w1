@@ -62,7 +62,7 @@ services:
     environment:
       - GRADIO_SERVER_NAME=0.0.0.0
       - GRADIO_SERVER_PORT=7860
-      - PHOENIX_ENDPOINT=http://phoenix:6006
+      - PHOENIX_ENDPOINT=http://phoenix:6006/v1/traces
       - PHOENIX_PROJECT_NAME=agentic-app-quickstart
       - MCP_SERVER_URL=http://mcp-server:8000/mcp
       - MCP_DEBUG=true

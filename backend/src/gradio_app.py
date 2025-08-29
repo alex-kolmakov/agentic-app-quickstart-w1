@@ -12,6 +12,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from agent.multi_agent_mcp import run_multi_agent_analysis
 from datetime import datetime
+from phoenix.otel import register
+
+from openinference.instrumentation.openai import OpenAIInstrumentor
+OpenAIInstrumentor().uninstrument()
+
+# Enable Phoenix tracing for monitoring agent interactions
+phoenix_endpoint = os.getenv("PHOENIX_ENDPOINT", "http://phoenix:6006/v1/traces")
+phoenix_project_name = os.getenv("PHOENIX_PROJECT_NAME", "agentic-app-quickstart")
 
 
 def create_gradio_interface():
@@ -158,6 +166,18 @@ def create_gradio_interface():
 
 
 if __name__ == "__main__":
+
+    print(f"🔍 Initializing Phoenix tracing...")
+    print(f"   📡 Endpoint: {phoenix_endpoint}")
+    print(f"   📁 Project: {phoenix_project_name}")
+
+    tracer_provider = register(
+        endpoint=phoenix_endpoint,
+        project_name=phoenix_project_name,
+        auto_instrument=True
+    )
+
+
     interface = create_gradio_interface()
     interface.launch(
         server_name="0.0.0.0",

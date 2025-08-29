@@ -35,8 +35,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from llm.model import get_model
 
-set_tracing_disabled(True)
-
 # Data Loader Agent - Uses MCP tools for file operations
 data_loader_agent = Agent(
     name="DataLoaderAgent",
