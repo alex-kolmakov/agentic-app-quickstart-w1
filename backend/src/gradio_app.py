@@ -1,5 +1,5 @@
 """
-Gradio interface for the MCP-based multi-agent system
+Gradio interface for the MCP-based agent system
 """
 
 import gradio as gr
@@ -21,6 +21,23 @@ OpenAIInstrumentor().uninstrument()
 
 # Enable Phoenix tracing for monitoring agent interactions
 phoenix_endpoint = os.getenv("PHOENIX_ENDPOINT", "http://phoenix:6006/v1/traces")
+phoenix_project_name = os.getenv("PHOENIX_PROJECT_NAME", "mcp-gradio-interface")
+
+# Session state for maintaining conversation context
+session_state = {
+    "session_id": f"gradio_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+    "messages": [],
+    "judge_evaluation": False
+}
+
+def get_example_questions():
+    """Return a list of example questions for the chat interface."""
+    return [
+        "Load employee_data.csv and show basic statistics",
+        "Create scatter plot with salary and hire date for employees", 
+        "Find the maximum salary and show which employee has it",
+        "Create a bar chart showing salary distribution by department"
+    ]
 phoenix_project_name = os.getenv("PHOENIX_PROJECT_NAME", "agentic-app-quickstart")
 
 # Charts directory path
@@ -37,19 +54,12 @@ def get_chart_gallery():
     chart_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)  # Most recent first
     return [str(chart) for chart in chart_files[:12]]  # Show up to 12 most recent charts
 
-def get_example_questions():
-    """Get example questions to display in chat initially"""
-    return [
-        "Investigate the data directory and show available files",
-        "Load employee_data.csv and show basic statistics", 
-        "Create scatter plot with salary and hire date for employees",
-        "Find the maximum salary and show which employee has it",
-        "Group employees by department and calculate average salary",
-        "Create a bar chart showing salary distribution by department"
-    ]
+def remove_duplicate_function():
+    """Remove duplicate function definition"""
+    pass
 
 def create_gradio_interface():
-    """Create Gradio interface for the MCP-based multi-agent system"""
+    """Create Gradio interface using ChatInterface for the MCP-based multi-agent system"""
     
     # Session state
     session_state = {
@@ -57,14 +67,10 @@ def create_gradio_interface():
         "judge_evaluation": False
     }
     
-    async def process_query_async(user_input, history, gallery, enable_judge=False):
+    async def process_query_async(user_input, enable_judge=False):
         """Process user query with the multi-agent system"""
         if not user_input.strip():
-            return history, "", gallery
-        
-        # Add user message to history
-        history = history or []
-        history.append([user_input, "🤖 Processing with multi-agent system..."])
+            return "Please enter a question."
         
         try:
             # Get response from MCP-based multi-agent system
@@ -74,45 +80,31 @@ def create_gradio_interface():
                 enable_judge=enable_judge
             )
             
-            # Update history with actual response
-            history[-1][1] = agent_response
+            return agent_response
             
         except Exception as e:
-            error_msg = f"❌ Error: {str(e)}"
-            history[-1][1] = error_msg
-        
-        # Update gallery with latest charts
-        updated_gallery = get_chart_gallery()
-        
-        return history, "", updated_gallery
+            return f"❌ Error: {str(e)}"
     
-    def process_query(user_input, history, gallery, enable_judge=False):
-        """Sync wrapper for Gradio"""
+    def chat(message, history):
+        """Chat function for ChatInterface"""
+        if not message.strip():
+            return "Please enter a question."
+        
+        # Get judge evaluation setting from session state
+        enable_judge = session_state.get("judge_evaluation", False)
+        
+        # Process the query
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            return loop.run_until_complete(process_query_async(user_input, history, gallery, enable_judge))
+            response = loop.run_until_complete(process_query_async(message, enable_judge))
+            # Update gallery after processing
+            updated_gallery = get_chart_gallery()
+            return response, gr.update(value=updated_gallery)
         finally:
             loop.close()
     
-    def reset_session():
-        """Reset the conversation session"""
-        session_state["session_id"] = f"gradio_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        gallery = get_chart_gallery()
-        
-        # Show example questions in chat
-        initial_history = []
-        examples = get_example_questions()
-        example_text = "Welcome to the **Data Analysis Assistant**! 🤖\n\n"
-        example_text += "Ask natural questions about your CSVs and get concise, actionable replies.\n\n"
-        example_text += "**Example questions you can ask:**\n"
-        for i, example in enumerate(examples, 1):
-            example_text += f"{i}. {example}\n"
-        
-        initial_history.append([None, example_text])
-        return initial_history, "", gallery, False  # Also reset judge checkbox
-    
-    # Create custom dark theme similar to the interface shown
+    # Create custom dark theme
     custom_theme = gr.themes.Base(
         primary_hue="blue",
         secondary_hue="gray",
@@ -131,7 +123,7 @@ def create_gradio_interface():
         body_text_color="#f3f4f6",
     )
     
-    # Create the interface
+    # Create the interface using ChatInterface
     with gr.Blocks(
         title="Data Analysis Assistant", 
         theme=custom_theme,
@@ -144,33 +136,18 @@ def create_gradio_interface():
             color: white;
             margin-bottom: 20px;
         }
-        .main-header h1 {
-            font-size: 2rem;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-        .main-header p {
-            font-size: 1rem;
-            opacity: 0.8;
-        }
-        .chart-gallery {
+        .header-controls {
             background: #1e2329;
+            border: 1px solid #3a4454;
             border-radius: 8px;
-            padding: 15px;
-        }
-        .chat-container {
-            background: #1e2329;
-            border-radius: 8px;
-            padding: 15px;
+            padding: 12px;
+            margin-bottom: 16px;
         }
         """
     ) as interface:
         
         # Initialize gallery with existing charts
-        initial_gallery = get_chart_gallery()
-        
-        # Initialize with example questions
-        initial_history, _, _, _ = reset_session()
+        gallery = gr.State(get_chart_gallery())
         
         gr.HTML("""
         <div class="main-header">
@@ -179,72 +156,57 @@ def create_gradio_interface():
         </div>
         """)
         
+        # Header controls for LLM as Judge
+        with gr.Row(elem_classes=["header-controls"]):
+            judge_checkbox = gr.Checkbox(
+                label="🏛️ Enable Judge Evaluation",
+                value=False,
+                info="Get quality assessment from Gemini judge"
+            )
+        
         with gr.Row():
-            with gr.Column(scale=3, elem_classes=["chat-container"]):
-                chatbot = gr.Chatbot(
-                    value=initial_history,
-                    label="💬 Chatbot",
-                    height=500,
-                    show_label=False,
-                    container=True,
-                    bubble_full_width=False,
-                    avatar_images=(None, "🤖")
+            with gr.Column(scale=3):
+                # Use ChatInterface with examples
+                chat_interface = gr.ChatInterface(
+                    chat,
+                    examples=get_example_questions(),
+                    additional_outputs=[gallery],
+                    type="messages",
+                    title="💬 Chat with Data Analysis Assistant"
                 )
                 
-                with gr.Row():
-                    msg = gr.Textbox(
-                        placeholder="Ask a question (e.g., 'Load employee data.csv and show key stats')",
-                        label="",
-                        lines=1,
-                        scale=4,
-                        show_label=False,
-                        container=False
-                    )
-                    submit_btn = gr.Button("Send", variant="primary", scale=1, size="sm")
+                # Add judge checkbox change handler
+                def update_judge_setting(enabled):
+                    session_state["judge_evaluation"] = enabled
+                    return f"Judge evaluation {'enabled' if enabled else 'disabled'}"
                 
-                with gr.Row():
-                    judge_checkbox = gr.Checkbox(
-                        label="🏛️ Enable Judge Evaluation",
-                        value=False,
-                        info="Get quality assessment from Gemini judge"
-                    )
-                    clear_btn = gr.Button("New Session", variant="secondary", size="sm")
-                
-            with gr.Column(scale=1, elem_classes=["chart-gallery"]):
+                judge_checkbox.change(
+                    fn=update_judge_setting,
+                    inputs=[judge_checkbox],
+                    outputs=[]
+                )
+            
+            with gr.Column(scale=1):
                 gr.HTML("<h3 style='color: white; margin-bottom: 15px; text-align: center;'>📊 Visualizations</h3>")
                 
-                with gr.Row():
-                    gr.HTML("<p style='color: #d1d5db; text-align: center; margin-bottom: 10px;'>Gallery</p>")
-                
-                gallery = gr.Gallery(
-                    value=initial_gallery,
+                gallery_display = gr.Gallery(
+                    value=get_chart_gallery(),
                     label="",
                     show_label=False,
                     columns=2,
                     rows=3,
-                    height=400,
+                    height=500,
                     container=True,
                     preview=True,
                     object_fit="cover"
                 )
                 
-        # Event handlers
-        submit_btn.click(
-            fn=process_query,
-            inputs=[msg, chatbot, gallery, judge_checkbox],
-            outputs=[chatbot, msg, gallery]
-        )
-        
-        msg.submit(
-            fn=process_query,
-            inputs=[msg, chatbot, gallery, judge_checkbox],
-            outputs=[chatbot, msg, gallery]
-        )
-        
-        clear_btn.click(
-            fn=reset_session,
-            outputs=[chatbot, msg, gallery, judge_checkbox]
-        )
+                # Connect gallery updates
+                gallery.change(
+                    fn=lambda x: x,
+                    inputs=[gallery],
+                    outputs=[gallery_display]
+                )
     
     return interface
 
